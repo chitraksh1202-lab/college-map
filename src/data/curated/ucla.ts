@@ -7,7 +7,9 @@ import type { CuratedCollegeData } from "@/lib/types";
  * before this college is marked production-ready.
  */
 export const uclaCuratedData: CuratedCollegeData = {
-  unitId: "TEST-000001",
+  // 110662 = UCLA's real College Scorecard/IPEDS UNITID, confirmed live
+  // against the Scorecard API (see scripts/import-college-scorecard.ts).
+  unitId: "110662",
   featured: true,
   tourPoints: [
     {
