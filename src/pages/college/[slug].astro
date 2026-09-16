@@ -1,0 +1,96 @@
+---
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import MapExplorer from "@/components/MapExplorer.tsx";
+import CampusExplorer from "@/components/CampusExplorer.astro";
+import StatTile from "@/components/StatTile.astro";
+import SaveButton from "@/components/SaveButton.tsx";
+import TeleportButton from "@/components/TeleportButton.tsx";
+import { getAllColleges, getCollegeBySlug } from "@/lib/colleges";
+import { getCuratedDataByUnitId } from "@/data/curated";
+import {
+  formatNumber,
+  formatOwnership,
+  formatPercent,
+  formatCurrency,
+  formatOrFallback,
+} from "@/lib/format";
+
+export function getStaticPaths() {
+  return getAllColleges().map((college) => ({ params: { slug: college.slug } }));
+}
+
+const { slug } = Astro.params;
+const college = getCollegeBySlug(slug!);
+
+if (!college) {
+  return Astro.redirect("/404");
+}
+
+const curated = getCuratedDataByUnitId(college.unitId);
+const campusSetting = curated?.campusSettingOverride ?? college.campusSetting;
+---
+
+<BaseLayout title={`${college.name} — College Explorer`} description={`${college.name} in ${college.city}, ${college.state}.`}>
+  <section class="mx-auto max-w-5xl px-4 pt-8 pb-6 md:px-8 md:pt-12">
+    <p class="text-sm font-medium text-horizon-600">
+      <a href={`/state/${college.state.toLowerCase().replace(/\s+/g, "-")}`} class="hover:underline">
+        ← {college.state}
+      </a>
+    </p>
+
+    <div class="mt-3 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div>
+        <h1 class="font-display text-3xl font-semibold tracking-tight text-slate-900 md:text-4xl">
+          {college.name}
+        </h1>
+        <p class="mt-2 text-slate-500">
+          {college.city}, {college.state} · {formatOwnership(college.ownership)}
+          {campusSetting && <span class="capitalize"> · {campusSetting}</span>}
+        </p>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-3">
+        <SaveButton client:load slug={college.slug} />
+        <a
+          href="#explore-campus-heading"
+          class="inline-flex items-center gap-2 rounded-full bg-horizon-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-horizon-700"
+        >
+          Explore Campus
+        </a>
+        <TeleportButton client:load currentSlug={college.slug} />
+      </div>
+    </div>
+  </section>
+
+  <section class="mx-auto max-w-5xl px-4 pb-10 md:px-8">
+    <h2 class="mb-3 font-display text-2xl font-semibold text-slate-900">At a Glance</h2>
+    <dl class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+      <StatTile label="Undergrad enrollment" value={formatNumber(college.undergraduateEnrollment)} />
+      <StatTile label="Admission rate" value={formatPercent(college.admissionRate)} />
+      <StatTile label="In-state tuition" value={formatCurrency(college.tuitionInState)} />
+      <StatTile label="Out-of-state tuition" value={formatCurrency(college.tuitionOutOfState)} />
+      <StatTile label="Average net price" value={formatCurrency(college.averageNetPrice)} />
+      <StatTile label="Graduation rate" value={formatPercent(college.graduationRate)} />
+      <StatTile label="SAT average" value={formatNumber(college.satAverage)} />
+      <StatTile
+        label="Website"
+        value={formatOrFallback(college.website)}
+        href={college.website}
+      />
+    </dl>
+  </section>
+
+  <section class="mx-auto max-w-5xl px-4 pb-10 md:px-8">
+    <h2 class="mb-3 font-display text-2xl font-semibold text-slate-900">Campus Location</h2>
+    <MapExplorer client:visible colleges={[college]} />
+  </section>
+
+  <section class="mx-auto max-w-5xl px-4 pb-16 md:px-8">
+    <CampusExplorer
+      collegeName={college.shortName ?? college.name}
+      fallbackLatitude={college.latitude}
+      fallbackLongitude={college.longitude}
+      tourPoints={curated?.tourPoints}
+    />
+  </section>
+</BaseLayout>

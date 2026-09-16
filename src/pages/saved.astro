@@ -1,0 +1,17 @@
+---
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import SavedCollegesList from "@/components/SavedCollegesList.tsx";
+---
+
+<BaseLayout title="Saved colleges — College Explorer">
+  <section class="mx-auto max-w-5xl px-4 pt-10 pb-6 md:px-8 md:pt-16">
+    <h1 class="font-display text-3xl font-semibold tracking-tight text-slate-900 md:text-4xl">
+      Saved colleges
+    </h1>
+    <p class="mt-2 text-slate-500">Colleges you've saved on this device.</p>
+  </section>
+
+  <section class="mx-auto max-w-5xl px-4 pb-16 md:px-8">
+    <SavedCollegesList client:load />
+  </section>
+</BaseLayout>

@@ -1,0 +1,104 @@
+---
+import type { CampusTourPoint } from "@/lib/types";
+
+type Props = {
+  collegeName: string;
+  fallbackLatitude: number;
+  fallbackLongitude: number;
+  tourPoints?: CampusTourPoint[];
+};
+
+const { collegeName, fallbackLatitude, fallbackLongitude, tourPoints = [] } = Astro.props;
+
+const embedKey = import.meta.env.PUBLIC_GOOGLE_MAPS_EMBED_KEY;
+
+const points: CampusTourPoint[] =
+  tourPoints.length > 0
+    ? tourPoints
+    : [
+        {
+          id: "campus-center",
+          name: `${collegeName} campus`,
+          latitude: fallbackLatitude,
+          longitude: fallbackLongitude,
+          category: "landmark",
+        },
+      ];
+
+function streetViewSrc(point: CampusTourPoint): string {
+  const params = new URLSearchParams({
+    key: embedKey ?? "",
+    location: `${point.latitude},${point.longitude}`,
+  });
+  return `https://www.google.com/maps/embed/v1/streetview?${params.toString()}`;
+}
+---
+
+<section aria-labelledby="explore-campus-heading" class="space-y-4">
+  <h2 id="explore-campus-heading" class="font-display text-2xl font-semibold text-slate-900">
+    Explore Campus
+  </h2>
+
+  {
+    !embedKey ? (
+      <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">
+        Street View isn't configured yet. Set{" "}
+        <code class="rounded bg-slate-200 px-1.5 py-0.5">PUBLIC_GOOGLE_MAPS_EMBED_KEY</code> in
+        your environment to enable this section.
+      </div>
+    ) : (
+      <div class="overflow-hidden rounded-3xl border border-slate-200 shadow-sm">
+        <iframe
+          id="street-view-frame"
+          class="h-[380px] w-full md:h-[460px]"
+          loading="lazy"
+          allowfullscreen
+          referrerpolicy="no-referrer-when-downgrade"
+          src={streetViewSrc(points[0])}
+          title={`Street View of ${collegeName}`}
+        />
+      </div>
+    )
+  }
+
+  {
+    points.length > 1 && (
+      <div class="flex flex-wrap gap-2">
+        {points.map((point, index) => (
+          <button
+            type="button"
+            class="tour-point-button rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-horizon-300 hover:text-horizon-700 aria-pressed:border-horizon-500 aria-pressed:bg-horizon-50 aria-pressed:text-horizon-800"
+            data-src={streetViewSrc(point)}
+            aria-pressed={index === 0 ? "true" : "false"}
+          >
+            {point.name}
+            {point.unverified && <span class="ml-1 text-amber-500">•</span>}
+          </button>
+        ))}
+      </div>
+    )
+  }
+
+  {
+    points.some((p) => p.unverified) && (
+      <p class="text-xs text-slate-400">
+        • Coordinates marked as approximate/dev placeholders, pending manual verification.
+      </p>
+    )
+  }
+</section>
+
+<script>
+  const frame = document.getElementById("street-view-frame") as HTMLIFrameElement | null;
+  const buttons = document.querySelectorAll<HTMLButtonElement>(".tour-point-button");
+
+  buttons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const src = button.dataset.src;
+      if (!src || !frame) return;
+      frame.src = src;
+      buttons.forEach((b) => b.setAttribute("aria-pressed", "false"));
+      button.setAttribute("aria-pressed", "true");
+    });
+  });
+</script>
