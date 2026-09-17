@@ -1,0 +1,39 @@
+---
+type Props = {
+  label: string;
+  value: string;
+  hint?: string;
+  variant?: "big" | "row";
+  href?: string;
+};
+
+const { label, value, hint, variant = "row", href } = Astro.props;
+---
+
+{
+  variant === "big" ? (
+    <div>
+      <dt class="text-xs font-medium uppercase tracking-wide text-ink-500" title={hint}>
+        {label}
+        {hint && <span aria-hidden="true" class="ml-0.5 cursor-help text-stone-400">ⓘ</span>}
+      </dt>
+      <dd class="mt-1.5 font-display text-3xl font-semibold text-ink-900 md:text-[2.5rem]">{value}</dd>
+    </div>
+  ) : (
+    <div class="flex items-center justify-between gap-6 py-3">
+      <dt class="text-sm text-ink-500" title={hint}>
+        {label}
+        {hint && <span aria-hidden="true" class="ml-0.5 cursor-help text-stone-400">ⓘ</span>}
+      </dt>
+      <dd class="text-right text-sm font-medium text-ink-800">
+        {href ? (
+          <a href={href} target="_blank" rel="noopener noreferrer" class="text-ember-600 hover:underline">
+            Visit site ↗
+          </a>
+        ) : (
+          value
+        )}
+      </dd>
+    </div>
+  )
+}

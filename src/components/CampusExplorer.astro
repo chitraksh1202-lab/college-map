@@ -34,62 +34,72 @@ function streetViewSrc(point: CampusTourPoint): string {
 }
 ---
 
-<section aria-labelledby="explore-campus-heading" class="space-y-4">
-  <h2 id="explore-campus-heading" class="font-display text-2xl font-semibold text-slate-900">
-    Explore Campus
+<section aria-labelledby="explore-campus-heading" class="space-y-5">
+  <h2 id="explore-campus-heading" class="scroll-mt-24 font-display text-2xl font-semibold text-ink-900">
+    Explore campus
   </h2>
 
-  {
-    !embedKey ? (
-      <div
-        id="street-view-fallback"
-        class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500"
-      >
-        Street View isn't configured yet for <span id="street-view-fallback-name">{points[0].name}</span>. Set{" "}
-        <code class="rounded bg-slate-200 px-1.5 py-0.5">PUBLIC_GOOGLE_MAPS_EMBED_KEY</code> in
-        your environment to enable this section.
-      </div>
-    ) : (
-      <div class="overflow-hidden rounded-3xl border border-slate-200 shadow-sm">
-        <iframe
-          id="street-view-frame"
-          class="h-[380px] w-full md:h-[460px]"
-          loading="lazy"
-          allowfullscreen
-          referrerpolicy="no-referrer-when-downgrade"
-          src={streetViewSrc(points[0])}
-          title={`Street View of ${collegeName}`}
-        />
-      </div>
-    )
-  }
+  <div class:list={["grid gap-5", points.length > 1 && "md:grid-cols-[13rem_1fr]"]}>
+    {
+      points.length > 1 && (
+        <div
+          aria-label="Campus stops"
+          class="flex gap-2 overflow-x-auto pb-1 md:flex-col md:overflow-visible md:pb-0"
+        >
+          {points.map((point, index) => (
+            <button
+              type="button"
+              class="tour-point-button shrink-0 rounded-2xl border border-stone-200 bg-white px-4 py-2.5 text-left text-sm font-medium text-ink-700 transition hover:border-ember-300 aria-pressed:border-ember-400 aria-pressed:bg-ember-50 aria-pressed:text-ember-700"
+              data-src={streetViewSrc(point)}
+              data-name={point.name}
+              aria-pressed={index === 0 ? "true" : "false"}
+            >
+              <span class="block truncate">{point.name}</span>
+              {point.unverified && <span class="text-xs text-stone-400">approximate location</span>}
+            </button>
+          ))}
+        </div>
+      )
+    }
 
-  {
-    points.length > 1 && (
-      <div class="flex flex-wrap gap-2">
-        {points.map((point, index) => (
-          <button
-            type="button"
-            class="tour-point-button rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-horizon-300 hover:text-horizon-700 aria-pressed:border-horizon-500 aria-pressed:bg-horizon-50 aria-pressed:text-horizon-800"
-            data-src={streetViewSrc(point)}
-            data-name={point.name}
-            aria-pressed={index === 0 ? "true" : "false"}
+    <div>
+      {
+        !embedKey ? (
+          <div
+            id="street-view-fallback"
+            class="flex h-[380px] flex-col items-center justify-center rounded-3xl border border-stone-200 bg-sand-100 p-8 text-center md:h-[440px]"
           >
-            {point.name}
-            {point.unverified && <span class="ml-1 text-amber-500">•</span>}
-          </button>
-        ))}
-      </div>
-    )
-  }
+            <p class="font-display text-lg text-ink-700">
+              Street View for <span id="street-view-fallback-name">{points[0].name}</span> is coming soon.
+            </p>
+            <p class="mt-2 max-w-sm text-sm text-ink-500">
+              We're still connecting this campus to Google Street View — check back shortly.
+            </p>
+          </div>
+        ) : (
+          <div class="overflow-hidden rounded-3xl border border-stone-200 shadow-soft">
+            <iframe
+              id="street-view-frame"
+              class="h-[380px] w-full md:h-[440px]"
+              loading="lazy"
+              allowfullscreen
+              referrerpolicy="no-referrer-when-downgrade"
+              src={streetViewSrc(points[0])}
+              title={`Street View of ${collegeName}`}
+            />
+          </div>
+        )
+      }
 
-  {
-    points.some((p) => p.unverified) && (
-      <p class="text-xs text-slate-400">
-        • Coordinates marked as approximate/dev placeholders, pending manual verification.
-      </p>
-    )
-  }
+      {
+        points.some((p) => p.unverified) && (
+          <p class="mt-3 text-xs text-ink-500/70">
+            Coordinates for these stops are approximate and pending manual verification.
+          </p>
+        )
+      }
+    </div>
+  </div>
 </section>
 
 <script>

@@ -1,16 +1,17 @@
 ---
 import BaseLayout from "@/layouts/BaseLayout.astro";
+import { BRAND_NAME } from "@/lib/site";
 ---
 
-<BaseLayout title="College not found — College Explorer">
+<BaseLayout title={`College not found — ${BRAND_NAME}`}>
   <section class="mx-auto flex max-w-2xl flex-col items-center gap-4 px-4 py-24 text-center">
-    <h1 class="font-display text-3xl font-semibold text-slate-900">We couldn't find that page</h1>
-    <p class="text-slate-500">
+    <h1 class="font-display text-4xl font-semibold text-ink-900">We couldn't find that page</h1>
+    <p class="text-ink-500">
       The college you're looking for isn't in our dataset yet, or the link is broken.
     </p>
     <a
       href="/"
-      class="mt-2 inline-block rounded-full bg-horizon-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-horizon-700"
+      class="mt-2 inline-block rounded-full bg-ink-900 px-5 py-2.5 text-sm font-semibold text-sand-50 transition hover:bg-ink-800 active:scale-95"
     >
       Back to the map
     </a>

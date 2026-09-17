@@ -1,18 +1,19 @@
 ---
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import { getAllColleges } from "@/lib/colleges";
+import { BRAND_NAME } from "@/lib/site";
 
 const count = getAllColleges().length;
 ---
 
 <BaseLayout
-  title="Data sources — College Explorer"
-  description="Where College Explorer's college data comes from and how to interpret it."
+  title={`Data sources — ${BRAND_NAME}`}
+  description={`Where ${BRAND_NAME}'s college data comes from and how to interpret it.`}
 >
-  <section class="mx-auto max-w-3xl px-4 py-12 md:px-8 md:py-16">
-    <h1 class="font-display text-3xl font-semibold tracking-tight text-slate-900">Data sources</h1>
+  <section class="mx-auto max-w-2xl px-4 py-12 md:px-8 md:py-16">
+    <h1 class="font-display text-4xl font-semibold tracking-tight text-ink-900">Data sources</h1>
 
-    <div class="prose prose-slate mt-6 max-w-none text-slate-600">
+    <div class="mt-6 space-y-4 text-[0.95rem] leading-relaxed text-ink-700">
       <p>
         Factual data for all {count.toLocaleString()} colleges — enrollment, admission rate,
         tuition, net price, graduation rate, SAT average, and median earnings — comes from the
@@ -21,7 +22,7 @@ const count = getAllColleges().length;
           href="https://collegescorecard.ed.gov/data/"
           target="_blank"
           rel="noopener noreferrer"
-          class="text-horizon-600 hover:underline"
+          class="text-ember-600 hover:underline"
         >
           College Scorecard
         </a>{" "}
@@ -30,8 +31,8 @@ const count = getAllColleges().length;
         rather than guess.
       </p>
 
-      <h2 class="mt-8 font-display text-xl font-semibold text-slate-900">Good to know</h2>
-      <ul class="mt-3 list-disc space-y-2 pl-5">
+      <h2 class="pt-4 font-display text-xl font-semibold text-ink-900">Good to know</h2>
+      <ul class="list-disc space-y-2 pl-5">
         <li>
           Different metrics can reflect different reporting cohorts/years — Scorecard doesn't
           publish every figure for every school for the same year.
@@ -41,29 +42,29 @@ const count = getAllColleges().length;
           requirements, deadlines, and costs directly with the college.
         </li>
         <li>
-          <strong>Graduation rate</strong> is the share of first-time, full-time students who
-          complete a bachelor's degree within 150% of normal time (Scorecard field{" "}
-          <code class="rounded bg-slate-100 px-1 py-0.5">C150_4</code>).
+          <strong class="text-ink-900">Graduation rate</strong> is the share of first-time,
+          full-time students who complete a bachelor's degree within 150% of normal time
+          (Scorecard field <code class="rounded bg-sand-200 px-1 py-0.5 text-[0.85em]">C150_4</code>).
         </li>
         <li>
-          <strong>Median earnings</strong> is the median earnings of former students who are
-          working and not enrolled, 10 years after entry (
-          <code class="rounded bg-slate-100 px-1 py-0.5">MD_EARN_WNE_P10</code>).
+          <strong class="text-ink-900">Median earnings</strong> is the median earnings of former
+          students who are working and not enrolled, 10 years after entry (
+          <code class="rounded bg-sand-200 px-1 py-0.5 text-[0.85em]">MD_EARN_WNE_P10</code>).
         </li>
         <li>
-          <strong>Average net price</strong> is the average amount students actually pay after
-          grants/scholarships — not the sticker tuition price.
+          <strong class="text-ink-900">Average net price</strong> is the average amount students
+          actually pay after grants/scholarships — not the sticker tuition price.
         </li>
       </ul>
 
-      <h2 class="mt-8 font-display text-xl font-semibold text-slate-900">Campus exploration content</h2>
+      <h2 class="pt-4 font-display text-xl font-semibold text-ink-900">Campus exploration content</h2>
       <p>
         Campus tour points (Street View stops, landmark descriptions) are curated separately from
         the official statistics above, verified manually against public sources, and never
         AI-generated.
       </p>
 
-      <h2 class="mt-8 font-display text-xl font-semibold text-slate-900">No rankings</h2>
+      <h2 class="pt-4 font-display text-xl font-semibold text-ink-900">No rankings</h2>
       <p>
         We don't rank, score, or editorialize which colleges are "best." Nothing on this site is
         sponsored, and no institution can pay for placement or better data.

@@ -8,3 +8,10 @@
  * for this task) — this is a placeholder.
  */
 export const SITE_URL = "https://college-explorer.pages.dev";
+
+/**
+ * Product name has not been finalized. Every place that displays it
+ * (nav logo, page titles, OG tags) imports from here so renaming later
+ * is a one-line change instead of a repo-wide find/replace.
+ */
+export const BRAND_NAME = "College Explorer";

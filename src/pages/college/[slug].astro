@@ -2,13 +2,15 @@
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import MapExplorer from "@/components/MapExplorer.tsx";
 import CampusExplorer from "@/components/CampusExplorer.astro";
-import StatTile from "@/components/StatTile.astro";
+import Metric from "@/components/Metric.astro";
+import SectionHeading from "@/components/SectionHeading.astro";
 import NearbyColleges from "@/components/NearbyColleges.astro";
 import SaveButton from "@/components/SaveButton.tsx";
 import TeleportButton from "@/components/TeleportButton.tsx";
 import { getAllColleges, getCollegeBySlug, getAllSlugs } from "@/lib/colleges";
 import { getCuratedDataByUnitId } from "@/data/curated";
 import { getDisplayName } from "@/lib/search";
+import { BRAND_NAME } from "@/lib/site";
 import {
   formatNumber,
   formatOwnership,
@@ -32,8 +34,9 @@ const curated = getCuratedDataByUnitId(college.unitId);
 const allSlugs = getAllSlugs();
 const campusSetting = curated?.campusSettingOverride ?? college.campusSetting;
 const displayName = getDisplayName(college);
+const stateSlug = college.state.toLowerCase().replace(/\s+/g, "-");
 
-const pageTitle = `${displayName} — Campus, Costs & Admissions | College Explorer`;
+const pageTitle = `${displayName} — Campus, Costs & Admissions | ${BRAND_NAME}`;
 const pageDescription = `${displayName} in ${college.city}, ${college.state}: campus map, Street View, enrollment, admission rate, tuition, and nearby colleges to explore.`;
 
 const structuredData = {
@@ -53,86 +56,106 @@ const structuredData = {
   },
   ...(college.website ? { url: college.website } : {}),
 };
+
+const secondaryFacts: { label: string; value: string; hint?: string; href?: string }[] = [
+  { label: "In-state tuition", value: formatCurrency(college.tuitionInState) },
+  { label: "Out-of-state tuition", value: formatCurrency(college.tuitionOutOfState) },
+  ...(college.graduationRate !== undefined
+    ? [{
+        label: "Graduation rate",
+        value: formatPercent(college.graduationRate),
+        hint: "Share of first-time, full-time students completing a bachelor's degree within 150% of normal time (Scorecard field C150_4).",
+      }]
+    : []),
+  ...(college.satAverage !== undefined
+    ? [{ label: "SAT average", value: formatNumber(college.satAverage) }]
+    : []),
+  ...(college.medianEarnings !== undefined
+    ? [{
+        label: "Median earnings",
+        value: formatCurrency(college.medianEarnings),
+        hint: "Median earnings of former students working and not enrolled, 10 years after entry (Scorecard field MD_EARN_WNE_P10).",
+      }]
+    : []),
+  ...(college.website
+    ? [{ label: "Website", value: formatOrFallback(college.website), href: college.website }]
+    : []),
+];
 ---
 
 <BaseLayout title={pageTitle} description={pageDescription} structuredData={structuredData}>
-  <section class="mx-auto max-w-5xl px-4 pt-8 pb-6 md:px-8 md:pt-12">
-    <p class="text-sm font-medium text-horizon-600">
-      <a href={`/state/${college.state.toLowerCase().replace(/\s+/g, "-")}`} class="hover:underline">
-        ← {college.state}
-      </a>
+  <section class="relative overflow-hidden bg-ink-900 text-sand-50">
+    <p
+      aria-hidden="true"
+      class="pointer-events-none absolute -right-4 -top-8 select-none whitespace-nowrap font-display text-[7rem] font-semibold leading-none text-white/[0.06] md:-top-10 md:text-[11rem]"
+    >
+      {college.stateCode}
     </p>
+    <div class="relative mx-auto max-w-5xl px-4 pt-7 pb-9 md:px-8 md:pt-12 md:pb-12">
+      <p class="text-sm font-medium text-sand-50/70">
+        <a href={`/state/${stateSlug}`} class="hover:text-sand-50 hover:underline">← {college.state}</a>
+      </p>
 
-    <div class="mt-3 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-      <div>
-        <h1 class="font-display text-3xl font-semibold tracking-tight text-slate-900 md:text-4xl">
-          {displayName}
-        </h1>
-        <p class="mt-2 text-slate-500">
-          {college.city}, {college.state} · {formatOwnership(college.ownership)}
-          {campusSetting && <span class="capitalize"> · {campusSetting}</span>}
-        </p>
-      </div>
+      <div class="mt-3 flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+        <div class="min-w-0">
+          <h1 class="break-words font-display text-4xl font-semibold leading-[1.05] tracking-tight md:text-6xl">
+            {displayName}
+          </h1>
+          <p class="mt-3 text-sand-50/75">
+            {college.city}, {college.state} · {formatOwnership(college.ownership)}
+            {campusSetting && <span class="capitalize"> · {campusSetting}</span>}
+          </p>
+        </div>
 
-      <div class="flex flex-wrap items-center gap-3">
-        <SaveButton client:load unitId={college.unitId} />
-        <a
-          href="#explore-campus-heading"
-          class="inline-flex items-center gap-2 rounded-full bg-horizon-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-horizon-700"
-        >
-          Explore Campus
-        </a>
-        <TeleportButton client:load allSlugs={allSlugs} currentSlug={college.slug} />
+        <div class="flex flex-wrap items-center gap-3">
+          <SaveButton
+            client:load
+            unitId={college.unitId}
+            className="inline-flex items-center gap-2 rounded-full bg-white/10 px-5 py-2.5 text-sm font-semibold text-sand-50 ring-1 ring-inset ring-white/20 transition hover:bg-white/15 active:scale-95"
+          />
+          <a
+            href="#explore-campus-heading"
+            class="inline-flex items-center gap-2 rounded-full bg-ember-500 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-ember-600 active:scale-95"
+          >
+            Explore Campus
+          </a>
+        </div>
       </div>
     </div>
   </section>
 
-  <section class="mx-auto max-w-5xl px-4 pb-10 md:px-8">
-    <h2 class="mb-3 font-display text-2xl font-semibold text-slate-900">At a Glance</h2>
-    <dl class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-      <StatTile label="Undergrad enrollment" value={formatNumber(college.undergraduateEnrollment)} />
-      <StatTile
+  <section class="mx-auto max-w-5xl px-4 pb-10 pt-9 md:px-8">
+    <SectionHeading title="At a glance" />
+    <dl class="grid grid-cols-2 gap-6 sm:grid-cols-3">
+      <Metric variant="big" label="Undergrad enrollment" value={formatNumber(college.undergraduateEnrollment)} />
+      <Metric
+        variant="big"
         label="Admission rate"
         value={formatPercent(college.admissionRate)}
         hint="Share of applicants admitted, as reported to College Scorecard."
       />
-      <StatTile label="In-state tuition" value={formatCurrency(college.tuitionInState)} />
-      <StatTile label="Out-of-state tuition" value={formatCurrency(college.tuitionOutOfState)} />
-      {college.averageNetPrice !== undefined && (
-        <StatTile
-          label="Average net price"
-          value={formatCurrency(college.averageNetPrice)}
-          hint="What students actually pay on average after grants/scholarships — not the sticker tuition price."
-        />
-      )}
-      {college.graduationRate !== undefined && (
-        <StatTile
-          label="Graduation rate"
-          value={formatPercent(college.graduationRate)}
-          hint="Share of first-time, full-time students completing a bachelor's degree within 150% of normal time (Scorecard field C150_4)."
-        />
-      )}
-      {college.satAverage !== undefined && (
-        <StatTile label="SAT average" value={formatNumber(college.satAverage)} />
-      )}
-      {college.medianEarnings !== undefined && (
-        <StatTile
-          label="Median earnings"
-          value={formatCurrency(college.medianEarnings)}
-          hint="Median earnings of former students working and not enrolled, 10 years after entry (Scorecard field MD_EARN_WNE_P10)."
-        />
-      )}
-      {college.website && (
-        <StatTile label="Website" value={formatOrFallback(college.website)} href={college.website} />
-      )}
+      <Metric
+        variant="big"
+        label="Average net price"
+        value={formatCurrency(college.averageNetPrice)}
+        hint="What students actually pay on average after grants/scholarships — not the sticker tuition price."
+      />
     </dl>
-    <p class="mt-3 text-xs text-slate-400">
-      Data from the US Dept of Education College Scorecard. <a href="/data-sources" class="underline hover:text-slate-600">How to read this data</a>
+
+    <dl class="mt-2 divide-y divide-stone-200 border-t border-stone-200">
+      {secondaryFacts.map((fact) => (
+        <Metric label={fact.label} value={fact.value} hint={fact.hint} href={fact.href} />
+      ))}
+    </dl>
+
+    <p class="mt-4 text-xs text-ink-500/80">
+      Data from the US Dept of Education College Scorecard.{" "}
+      <a href="/data-sources" class="underline hover:text-ink-800">How to read this data</a>
     </p>
   </section>
 
   <section class="mx-auto max-w-5xl px-4 pb-10 md:px-8">
-    <h2 class="mb-3 font-display text-2xl font-semibold text-slate-900">Campus Location</h2>
+    <SectionHeading title="Campus location" />
     <MapExplorer client:visible colleges={[college]} />
   </section>
 
@@ -146,4 +169,10 @@ const structuredData = {
   </section>
 
   <NearbyColleges slug={college.slug} />
+
+  <section class="mx-auto max-w-5xl px-4 pb-16 md:px-8">
+    <div class="flex justify-center border-t border-stone-200 pt-10">
+      <TeleportButton client:load allSlugs={allSlugs} currentSlug={college.slug} />
+    </div>
+  </section>
 </BaseLayout>

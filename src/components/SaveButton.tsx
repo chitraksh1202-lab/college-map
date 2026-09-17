@@ -16,10 +16,10 @@ export default function SaveButton({ unitId, className }: Props) {
       aria-pressed={saved}
       className={
         className ??
-        `inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold shadow-sm transition ${
+        `inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold shadow-soft transition active:scale-95 ${
           saved
-            ? "bg-horizon-900 text-white hover:bg-horizon-800"
-            : "bg-white text-horizon-900 ring-1 ring-inset ring-horizon-200 hover:bg-horizon-50"
+            ? "bg-ink-900 text-sand-50 hover:bg-ink-800"
+            : "bg-white text-ink-900 ring-1 ring-inset ring-stone-200 hover:bg-sand-100"
         }`
       }
     >

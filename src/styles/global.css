@@ -7,5 +7,39 @@ html {
 }
 
 body {
-  @apply bg-horizon-50 text-slate-800 antialiased;
+  @apply bg-sand-50 text-ink-800 antialiased;
+}
+
+::selection {
+  @apply bg-ember-200 text-ink-900;
+}
+
+/* MapLibre chrome: keep attribution (required) but make it native to the
+   product. Zoom controls are custom React buttons in MapExplorer. */
+.map-shell .maplibregl-ctrl-attrib {
+  @apply rounded-tl-xl bg-sand-50/80 text-[10px] text-ink-500;
+}
+.map-shell .maplibregl-ctrl-attrib a {
+  @apply text-ink-700;
+}
+.map-shell .maplibregl-ctrl-attrib-button {
+  @apply rounded-full bg-sand-50/90;
+}
+.map-shell .maplibregl-ctrl-bottom-right {
+  @apply z-[4];
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-rise-in {
+  animation: rise-in 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
 }

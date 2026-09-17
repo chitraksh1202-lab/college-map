@@ -6,6 +6,7 @@ type Props = {
   allSlugs: string[];
   currentSlug?: string;
   className?: string;
+  label?: string;
 };
 
 function pickRandom(allSlugs: string[], exclude: string[]): string {
@@ -15,7 +16,7 @@ function pickRandom(allSlugs: string[], exclude: string[]): string {
   return candidates[Math.floor(Math.random() * candidates.length)];
 }
 
-export default function TeleportButton({ allSlugs, currentSlug, className }: Props) {
+export default function TeleportButton({ allSlugs, currentSlug, className, label = "Surprise me" }: Props) {
   const [isNavigating, setIsNavigating] = useState(false);
 
   function teleport() {
@@ -34,11 +35,17 @@ export default function TeleportButton({ allSlugs, currentSlug, className }: Pro
       disabled={isNavigating}
       className={
         className ??
-        "inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-sunset-500 to-sunset-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md transition hover:shadow-lg disabled:opacity-70"
+        "inline-flex items-center gap-2 rounded-full bg-ember-500 px-5 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-ember-600 active:scale-95 disabled:opacity-70"
       }
     >
-      <span aria-hidden="true">🎲</span>
-      {isNavigating ? "Teleporting…" : "Teleport me somewhere new"}
+      <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="h-4 w-4">
+        <path
+          d="M10 2.5l1.4 3.9 3.9 1.4-3.9 1.4L10 13.1l-1.4-3.9-3.9-1.4 3.9-1.4L10 2.5z"
+          fill="currentColor"
+        />
+        <path d="M15.8 12l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7.7-2z" fill="currentColor" />
+      </svg>
+      {isNavigating ? "Teleporting…" : label}
     </button>
   );
 }
