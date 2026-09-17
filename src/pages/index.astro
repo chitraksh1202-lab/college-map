@@ -14,18 +14,18 @@ const allSlugs = getAllSlugs();
   title="College Explorer — Explore colleges across America"
   description={`Explore ${count.toLocaleString()} US colleges like places, not rankings — an interactive map, campus Street View, and playful discovery.`}
 >
-  <section class="mx-auto max-w-5xl px-4 pt-7 pb-4 text-center md:px-8 md:pt-9">
+  <section class="mx-auto max-w-5xl px-4 pt-5 pb-3 text-center md:px-8 md:pt-6">
     <p class="text-xs font-medium uppercase tracking-[0.2em] text-ember-600">
       {count.toLocaleString()} colleges · one map
     </p>
-    <h1 class="mx-auto mt-2.5 max-w-2xl font-display text-[2.15rem] font-semibold leading-[1.08] tracking-tight text-ink-900 md:text-5xl">
+    <h1 class="mx-auto mt-2 max-w-2xl font-display text-[2.15rem] font-semibold leading-[1.08] tracking-tight text-ink-900 md:text-5xl">
       Find a college you'd actually want to be at.
     </h1>
-    <p class="mx-auto mt-2.5 hidden max-w-md text-[0.95rem] text-ink-500 sm:block md:text-base">
+    <p class="mx-auto mt-1.5 hidden max-w-md text-[0.95rem] text-ink-500 sm:block md:text-base">
       Explore like it's a place, not a spreadsheet — then teleport somewhere you've never heard of.
     </p>
 
-    <div class="mx-auto mt-5 flex max-w-2xl flex-col items-center gap-3 sm:flex-row sm:justify-center">
+    <div class="mx-auto mt-4 flex max-w-2xl flex-col items-center gap-3 sm:flex-row sm:justify-center">
       <SearchBox client:load colleges={colleges} size="large" />
       <TeleportButton
         client:load
@@ -35,7 +35,8 @@ const allSlugs = getAllSlugs();
     </div>
   </section>
 
-  <section class="mx-auto max-w-[1680px] px-2 pb-8 md:px-5">
+  <!-- The exploration canvas gets its own near-full-width container; the rest of the site stays constrained. -->
+  <section class="mx-auto w-full px-2 pb-6 md:px-5">
     <MapExplorer client:load colleges={colleges} national />
   </section>
 </BaseLayout>

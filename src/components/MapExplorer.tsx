@@ -98,22 +98,28 @@ function restyleBasemap(map: maplibregl.Map) {
     if (map.getLayer(id)) map.setLayerZoomRange(id, min, max);
   };
 
-  // Land & water
-  paint("background", "background-color", "#f2eadb");
-  paint("water", "fill-color", "#c9dde6");
-  paint("waterway", "line-color", "#bcd2db");
-  for (const id of ["landcover", "park_national_park", "park_nature_reserve", "landuse"]) {
-    paint(id, "fill-color", "#d3d9b8");
-    paint(id, "fill-opacity", ["interpolate", ["linear"], ["zoom"], 3, 0.55, 8, 0.45, 12, 0.35]);
+  // Land & water. CARTO's vector tiles carry no terrain / hillshade data, so
+  // "texture" here comes from landcover and protected-area polygons only —
+  // parks and forests are pulled down to national zoom to give the West its
+  // green mass instead of a flat parchment sheet.
+  paint("background", "background-color", "#efe4cf");
+  paint("water", "fill-color", "#b9d0dc");
+  paint("waterway", "line-color", "#aac5d1");
+  paint("landcover", "fill-color", "#cdd5ad");
+  paint("landcover", "fill-opacity", ["interpolate", ["linear"], ["zoom"], 3, 0.7, 8, 0.5, 12, 0.35]);
+  for (const id of ["park_national_park", "park_nature_reserve", "landuse"]) {
+    zoomRange(id, 3, 24);
+    paint(id, "fill-color", "#c9d2a6");
+    paint(id, "fill-opacity", ["interpolate", ["linear"], ["zoom"], 3, 0.6, 8, 0.45, 12, 0.3]);
   }
-  paint("landuse_residential", "fill-color", "#ece2cf");
+  paint("landuse_residential", "fill-color", "#e8dcc5");
 
   // Boundaries: states readable from the national view, counties only up close
   zoomRange("boundary_state", 2, 24);
-  paint("boundary_state", "line-color", "#a99677");
-  paint("boundary_state", "line-width", ["interpolate", ["linear"], ["zoom"], 3, 0.8, 6, 1.2, 10, 1.6]);
-  paint("boundary_state", "line-opacity", 0.85);
-  paint("boundary_country_inner", "line-color", "#8f7c60");
+  paint("boundary_state", "line-color", "#a08c6c");
+  paint("boundary_state", "line-width", ["interpolate", ["linear"], ["zoom"], 3, 0.7, 6, 1.1, 10, 1.5]);
+  paint("boundary_state", "line-opacity", 0.75);
+  paint("boundary_country_inner", "line-color", "#85704f");
   paint("boundary_country_inner", "line-width", ["interpolate", ["linear"], ["zoom"], 3, 1, 8, 1.6]);
   paint("boundary_country_outline", "line-color", "#e6dcc8");
   layout("boundary_county", "visibility", "none");
@@ -123,7 +129,7 @@ function restyleBasemap(map: maplibregl.Map) {
   layout("place_state", "text-size", ["interpolate", ["linear"], ["zoom"], 3.2, 9.5, 5, 11.5, 7, 14]);
   layout("place_state", "text-letter-spacing", 0.12);
   paint("place_state", "text-color", "#7a6a55");
-  paint("place_state", "text-halo-color", "#f2eadb");
+  paint("place_state", "text-halo-color", "#efe4cf");
   paint("place_state", "text-halo-width", 1.2);
   zoomRange("place_city_dot_r2", 3.6, 7);
   for (const id of ["place_city_r6", "place_city_r5", "place_city_dot_r7", "place_city_dot_r4", "place_city_dot_r2", "place_city_dot_z7", "place_capital_dot_z7", "place_town", "place_villages", "place_suburbs", "place_hamlet"]) {
@@ -203,23 +209,37 @@ export default function MapExplorer({ colleges, national = false }: Props) {
         type: "geojson",
         data: collegesToGeoJSON(colleges),
         cluster: true,
-        clusterRadius: 56,
+        clusterRadius: 64,
         clusterMaxZoom: 12,
       });
 
-      const clusterRadius = (base: number): maplibregl.ExpressionSpecification => [
+      // Cluster size is driven by count with a wide spread (a 5-college
+      // cluster is a quiet dot, a 250+ cluster is a landmark) and grows a
+      // little as you zoom so regional views don't feel sparse.
+      const byCount = (base: number, k: number): maplibregl.ExpressionSpecification => [
         "step",
         ["get", "point_count"],
-        base,
+        base * k,
         10,
-        base + 3,
+        (base + 4) * k,
         30,
-        base + 6,
+        (base + 8) * k,
         100,
-        base + 10,
+        (base + 13) * k,
         250,
-        base + 14,
+        (base + 19) * k,
       ];
+      // Zoom must be the outer expression for MapLibre's paint validator.
+      const clusterRadius = (base: number): maplibregl.ExpressionSpecification => [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        3,
+        byCount(base, 1),
+        7,
+        byCount(base, 1.25),
+      ];
+      const small: maplibregl.ExpressionSpecification = ["<", ["get", "point_count"], 10];
 
       // Soft outer halo, then a paper-coloured ring, then the ink disc.
       map.addLayer({
@@ -229,9 +249,9 @@ export default function MapExplorer({ colleges, national = false }: Props) {
         filter: ["has", "point_count"],
         paint: {
           "circle-color": INK,
-          "circle-radius": clusterRadius(24),
-          "circle-opacity": 0.09,
-          "circle-blur": 0.5,
+          "circle-radius": clusterRadius(18),
+          "circle-opacity": ["case", small, 0.05, 0.11],
+          "circle-blur": 0.6,
         },
       });
       map.addLayer({
@@ -241,8 +261,8 @@ export default function MapExplorer({ colleges, national = false }: Props) {
         filter: ["has", "point_count"],
         paint: {
           "circle-color": SAND,
-          "circle-radius": clusterRadius(19),
-          "circle-opacity": 0.85,
+          "circle-radius": clusterRadius(13),
+          "circle-opacity": ["case", small, 0.7, 0.9],
         },
       });
       map.addLayer({
@@ -251,9 +271,10 @@ export default function MapExplorer({ colleges, national = false }: Props) {
         source: "colleges",
         filter: ["has", "point_count"],
         paint: {
-          "circle-color": INK,
-          "circle-radius": clusterRadius(15),
-          "circle-stroke-width": 1.5,
+          "circle-color": ["case", small, "#3a332b", INK],
+          "circle-radius": clusterRadius(9),
+          "circle-opacity": ["case", small, 0.88, 1],
+          "circle-stroke-width": ["case", small, 1, 1.5],
           "circle-stroke-color": SAND,
         },
       });
@@ -264,7 +285,7 @@ export default function MapExplorer({ colleges, national = false }: Props) {
         filter: ["==", ["get", "cluster_id"], -1],
         paint: {
           "circle-color": "transparent",
-          "circle-radius": clusterRadius(19),
+          "circle-radius": clusterRadius(13),
           "circle-stroke-width": 2,
           "circle-stroke-color": EMBER,
           "circle-stroke-opacity": 0.9,
@@ -278,7 +299,7 @@ export default function MapExplorer({ colleges, national = false }: Props) {
         layout: {
           "text-field": ["get", "point_count_abbreviated"],
           "text-font": ["Open Sans Bold", "Noto Sans Regular"],
-          "text-size": ["step", ["get", "point_count"], 12, 30, 13, 100, 14],
+          "text-size": ["step", ["get", "point_count"], 10, 10, 11.5, 30, 12.5, 100, 14, 250, 15],
           "text-allow-overlap": true,
         },
         paint: { "text-color": SAND },
@@ -316,8 +337,8 @@ export default function MapExplorer({ colleges, national = false }: Props) {
         filter: ["!", ["has", "point_count"]],
         paint: {
           "circle-color": EMBER,
-          "circle-radius": ["interpolate", ["linear"], ["zoom"], 3, 4, 7, 5.5, 12, 7.5],
-          "circle-stroke-width": 1.5,
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 3, 3, 7, 5, 12, 7.5],
+          "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 3, 1, 7, 1.5],
           "circle-stroke-color": SAND,
         },
       });
@@ -432,11 +453,16 @@ export default function MapExplorer({ colleges, national = false }: Props) {
     <div
       className={`map-shell relative w-full overflow-hidden border border-stone-200 bg-[#f2eadb] shadow-lift ${
         national
-          ? "h-[70vh] min-h-[460px] rounded-[22px] md:h-[calc(100vh-11.5rem)] md:min-h-[560px] md:rounded-[30px]"
+          ? "h-[70vh] min-h-[460px] rounded-[22px] md:h-[calc(100vh-9.5rem)] md:min-h-[600px] md:rounded-[30px]"
           : "h-[72vh] min-h-[440px] rounded-[28px] md:h-[78vh]"
       }`}
     >
       <div ref={mapContainerRef} className="h-full w-full" />
+      {/* Soft paper vignette so the canvas reads as an editorial map, not a widget */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 z-[3] rounded-[inherit] shadow-[inset_0_0_90px_rgba(84,64,32,0.14)]"
+      />
 
       {/* Custom zoom controls */}
       <div className="absolute right-3 top-3 z-[5] flex flex-col overflow-hidden rounded-2xl border border-stone-200 bg-sand-50/95 shadow-soft backdrop-blur md:right-4 md:top-4">
