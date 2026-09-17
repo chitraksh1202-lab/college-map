@@ -1,38 +1,26 @@
-College Scorecard import complete
+College Scorecard national import complete
 
-Requested institutions: 20
-Imported: 0
+Total raw Scorecard rows: 6273
+Rows passing eligibility filter: 1733
+Rows excluded: 4540
 
-Missing admission rate: 0
-Missing SAT data: 0
-Missing net price: 0
-Missing graduation rate: 0
-Missing tuition: 0
-Missing median earnings: 0
+Public: 542
+Private nonprofit: 1137
+Private for-profit: 54
+Unknown ownership: 0
+
+Imported (after validation): 1733
+
+Missing admission rate: 251
+Missing SAT data: 764
+Missing net price: 119
+Missing graduation rate: 85
+Missing tuition: 72
+Missing median earnings: 129
 Missing coordinates: 0
 
 Duplicate UNITIDs: 0
-Duplicate slugs: 0
+Duplicate slugs (after collision resolution): 0
+Slug collisions resolved: 13
 Invalid coordinates: 0
-Match failures: 20
-  - university-of-california-los-angeles: College Scorecard API rate limit exceeded after 5 retries. Set COLLEGE_SCORECARD_API_KEY to a personal key (https://api.data.gov/signup/?api=collegescorecard) — the shared DEMO_KEY has a very low quota.
-  - university-of-california-berkeley: College Scorecard API rate limit exceeded after 5 retries. Set COLLEGE_SCORECARD_API_KEY to a personal key (https://api.data.gov/signup/?api=collegescorecard) — the shared DEMO_KEY has a very low quota.
-  - stanford-university: College Scorecard API rate limit exceeded after 5 retries. Set COLLEGE_SCORECARD_API_KEY to a personal key (https://api.data.gov/signup/?api=collegescorecard) — the shared DEMO_KEY has a very low quota.
-  - university-of-southern-california: College Scorecard API rate limit exceeded after 5 retries. Set COLLEGE_SCORECARD_API_KEY to a personal key (https://api.data.gov/signup/?api=collegescorecard) — the shared DEMO_KEY has a very low quota.
-  - university-of-california-san-diego: College Scorecard API rate limit exceeded after 5 retries. Set COLLEGE_SCORECARD_API_KEY to a personal key (https://api.data.gov/signup/?api=collegescorecard) — the shared DEMO_KEY has a very low quota.
-  - california-institute-of-technology: College Scorecard API rate limit exceeded after 5 retries. Set COLLEGE_SCORECARD_API_KEY to a personal key (https://api.data.gov/signup/?api=collegescorecard) — the shared DEMO_KEY has a very low quota.
-  - san-diego-state-university: College Scorecard API rate limit exceeded after 5 retries. Set COLLEGE_SCORECARD_API_KEY to a personal key (https://api.data.gov/signup/?api=collegescorecard) — the shared DEMO_KEY has a very low quota.
-  - harvard-university: College Scorecard API rate limit exceeded after 5 retries. Set COLLEGE_SCORECARD_API_KEY to a personal key (https://api.data.gov/signup/?api=collegescorecard) — the shared DEMO_KEY has a very low quota.
-  - massachusetts-institute-of-technology: College Scorecard API rate limit exceeded after 5 retries. Set COLLEGE_SCORECARD_API_KEY to a personal key (https://api.data.gov/signup/?api=collegescorecard) — the shared DEMO_KEY has a very low quota.
-  - yale-university: College Scorecard API rate limit exceeded after 5 retries. Set COLLEGE_SCORECARD_API_KEY to a personal key (https://api.data.gov/signup/?api=collegescorecard) — the shared DEMO_KEY has a very low quota.
-  - princeton-university: College Scorecard API rate limit exceeded after 5 retries. Set COLLEGE_SCORECARD_API_KEY to a personal key (https://api.data.gov/signup/?api=collegescorecard) — the shared DEMO_KEY has a very low quota.
-  - university-of-michigan: College Scorecard API rate limit exceeded after 5 retries. Set COLLEGE_SCORECARD_API_KEY to a personal key (https://api.data.gov/signup/?api=collegescorecard) — the shared DEMO_KEY has a very low quota.
-  - university-of-texas-at-austin: College Scorecard API rate limit exceeded after 5 retries. Set COLLEGE_SCORECARD_API_KEY to a personal key (https://api.data.gov/signup/?api=collegescorecard) — the shared DEMO_KEY has a very low quota.
-  - university-of-florida: College Scorecard API rate limit exceeded after 5 retries. Set COLLEGE_SCORECARD_API_KEY to a personal key (https://api.data.gov/signup/?api=collegescorecard) — the shared DEMO_KEY has a very low quota.
-  - ohio-state-university: College Scorecard API rate limit exceeded after 5 retries. Set COLLEGE_SCORECARD_API_KEY to a personal key (https://api.data.gov/signup/?api=collegescorecard) — the shared DEMO_KEY has a very low quota.
-  - university-of-washington: College Scorecard API rate limit exceeded after 5 retries. Set COLLEGE_SCORECARD_API_KEY to a personal key (https://api.data.gov/signup/?api=collegescorecard) — the shared DEMO_KEY has a very low quota.
-  - arizona-state-university: College Scorecard API rate limit exceeded after 5 retries. Set COLLEGE_SCORECARD_API_KEY to a personal key (https://api.data.gov/signup/?api=collegescorecard) — the shared DEMO_KEY has a very low quota.
-  - georgia-institute-of-technology: College Scorecard API rate limit exceeded after 5 retries. Set COLLEGE_SCORECARD_API_KEY to a personal key (https://api.data.gov/signup/?api=collegescorecard) — the shared DEMO_KEY has a very low quota.
-  - university-of-chicago: College Scorecard API rate limit exceeded after 5 retries. Set COLLEGE_SCORECARD_API_KEY to a personal key (https://api.data.gov/signup/?api=collegescorecard) — the shared DEMO_KEY has a very low quota.
-  - duke-university: College Scorecard API rate limit exceeded after 5 retries. Set COLLEGE_SCORECARD_API_KEY to a personal key (https://api.data.gov/signup/?api=collegescorecard) — the shared DEMO_KEY has a very low quota.
 Validation errors: 0

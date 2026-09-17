@@ -1,5 +1,5 @@
 /**
- * College Scorecard bulk-download import pipeline.
+ * College Scorecard bulk-download import pipeline — national scale.
  *
  * Run with: npm run data:import
  * Force a fresh download: npm run data:import -- --refresh
@@ -11,35 +11,67 @@
  *      Caches the ZIP and the extracted CSV under `src/data/raw/`
  *      (gitignored) and reuses that cache on subsequent runs unless
  *      `--refresh` is passed.
- *   2. For each institution in `institution-manifest.ts`, scans the CSV for
- *      matching rows by name/city/state and verifies a confident, unique
- *      match before accepting it — it never just accepts "the
- *      closest-sounding name."
- *   3. Normalizes the verified official fields into our internal `College`
- *      schema (src/lib/types.ts).
- *   4. Validates the normalized data (coordinates, rates, tuition, URLs,
- *      duplicate IDs/slugs).
- *   5. Writes `src/data/generated/colleges.json` (committed — this is the
- *      data our static build actually consumes) and a human-readable
- *      import report.
+ *   2. Scans every row and keeps the ones that pass the NATIONAL
+ *      ELIGIBILITY FILTER below — no manually maintained institution list.
+ *   3. Normalizes the kept rows into our internal `College` schema
+ *      (src/lib/types.ts), generating a stable slug per institution.
+ *   4. Validates the normalized data and resolves any slug collisions
+ *      deterministically.
+ *   5. Writes `src/data/generated/colleges.json` (committed) and a
+ *      human-readable import report — but NEVER if the result looks
+ *      empty/broken (see the safeguard below).
  *
  * Data source: US Dept of Education College Scorecard, "Most Recent
- * Institution-Level Data" bulk CSV.
- * Source page: https://collegescorecard.ed.gov/data/
- * The exact download URL is discovered by reading that page (the file name
- * is date-stamped and changes each time ED refreshes the data) — override
- * with COLLEGE_SCORECARD_ZIP_URL if that page's structure ever changes and
- * discovery breaks.
+ * Institution-Level Data" bulk CSV. Source page:
+ * https://collegescorecard.ed.gov/data/ (exact download URL is
+ * discovered from that page since the filename is date-stamped; override
+ * with COLLEGE_SCORECARD_ZIP_URL if discovery ever breaks).
  *
- * This script only ever runs locally/at build time and needs no
- * credentials — the bulk file is public.
+ * ---------------------------------------------------------------------
+ * NATIONAL ELIGIBILITY FILTER — every column below is an official,
+ * documented College Scorecard field (data dictionary at
+ * https://collegescorecard.ed.gov/data/documentation/). Nothing here is
+ * guessed:
+ *
+ *   CURROPER == 1        Currently operating institution (excludes closed
+ *                        schools — Scorecard's own "currently operating"
+ *                        flag).
+ *   MAIN == 1            Main campus record, not a branch/additional
+ *                        location. Branch-campus rows for the same parent
+ *                        institution are excluded to avoid near-duplicate
+ *                        entries flooding the map; this is the one
+ *                        deliberate simplification and is revisited if we
+ *                        ever want branch campuses as distinct pins.
+ *   PREDDEG == 3         "Predominantly bachelor's-degree granting" — the
+ *                        Scorecard field that directly captures
+ *                        "four-year, bachelor's-oriented, undergraduate
+ *                        degree-granting." This single field also
+ *                        excludes predominantly-graduate (4),
+ *                        predominantly-associate's (2), and
+ *                        predominantly-certificate (1) institutions in
+ *                        one documented step, rather than us guessing at
+ *                        a combination of other fields.
+ *   DISTANCEONLY != 1    Scorecard's own flag for "distance-education-only"
+ *                        institutions — used to exclude online-only
+ *                        schools from a geographic exploration product.
+ *   CONTROL in {1,2,3}   Public / private nonprofit / private for-profit —
+ *                        all three ownership types are kept. We do not
+ *                        add a separate for-profit-specific carve-out
+ *                        beyond this: the PREDDEG==3 requirement above
+ *                        already excludes the vocational/certificate-style
+ *                        for-profit schools that wouldn't fit undergraduate
+ *                        college exploration, without us having to invent
+ *                        a second, less-documented heuristic.
+ *   Valid LATITUDE/LONGITUDE   Must be present and within valid ranges —
+ *                        "a meaningful physical campus with valid US
+ *                        coordinates" per the brief.
+ * ---------------------------------------------------------------------
  */
 import { writeFileSync, mkdirSync, existsSync, createReadStream } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import readline from "node:readline";
 import AdmZip from "adm-zip";
-import { institutionManifest, type ManifestEntry } from "./institution-manifest.ts";
 import type { College, Ownership } from "../src/lib/types.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -47,6 +79,8 @@ const ROOT = resolve(__dirname, "..");
 const RAW_DIR = resolve(ROOT, "src/data/raw");
 const ZIP_CACHE_PATH = resolve(RAW_DIR, "college-scorecard-institution.zip");
 const CSV_CACHE_PATH = resolve(RAW_DIR, "Most-Recent-Cohorts-Institution.csv");
+const OUTPUT_PATH = resolve(ROOT, "src/data/generated/colleges.json");
+const REPORT_PATH = resolve(ROOT, "src/data/generated/import-report.txt");
 
 const DATA_PAGE_URL = "https://collegescorecard.ed.gov/data/";
 const ZIP_LINK_PATTERN = /https:\/\/[^\s"'<>]+Most-Recent-Cohorts-Institution[^\s"'<>]*\.zip/i;
@@ -55,48 +89,24 @@ const CSV_ENTRY_PATTERN = /Most-Recent-Cohorts-Institution\.csv$/i;
 const forceRefresh = process.argv.includes("--refresh");
 
 /**
- * Exact College Scorecard bulk-CSV columns this pipeline reads, and why.
- * Every internal `College` field populated from the data traces back to
- * exactly one of these — nothing here is inferred or guessed.
- *
- *   UNITID           -> unitId (canonical IPEDS/Scorecard identifier)
- *   INSTNM           -> name
- *   CITY             -> city
- *   STABBR           -> stateCode
- *   ZIP              -> zip
- *   INSTURL          -> website
- *   CONTROL          -> ownership (1=public, 2=private nonprofit, 3=private for-profit)
- *   LOCALE           -> campusSetting (NCES urban-centric locale code, bucketed)
- *   LATITUDE / LONGITUDE -> latitude / longitude
- *   UGDS             -> undergraduateEnrollment (degree/certificate-seeking undergrads)
- *   ADM_RATE         -> admissionRate
- *   TUITIONFEE_IN    -> tuitionInState
- *   TUITIONFEE_OUT   -> tuitionOutOfState
- *   NPT4_PUB / NPT4_PRIV -> averageNetPrice (PUB when CONTROL=1, otherwise PRIV — the
- *                        two fields are mutually exclusive per institution in this dataset)
- *   C150_4           -> graduationRate (first-time, full-time students at 4-year
- *                        institutions, 150% of expected completion time — the figure
- *                        shown as "Graduation Rate" on the public collegescorecard.ed.gov site)
- *   SAT_AVG          -> satAverage
- *   MD_EARN_WNE_P10  -> medianEarnings (median earnings of former students working and
- *                        not enrolled, 10 years after entry — the headline Scorecard
- *                        earnings metric)
- *
- * Deliberately NOT mapped: no substitute column is used when one of these
- * is missing. A missing value stays undefined and renders as "Data
- * unavailable" in the UI — never a different-but-similar-sounding column.
+ * Safeguard: a successful national import should yield thousands of
+ * institutions. If a run produces fewer than this, something is wrong
+ * (bad filter, truncated CSV, network hiccup) — refuse to overwrite the
+ * last known-good `colleges.json` rather than silently shipping an
+ * empty/tiny dataset. This is also how we avoid repeating what likely
+ * happened previously: a generated file getting committed while empty.
  */
+const MIN_EXPECTED_INSTITUTIONS = 500;
+
 const CSV_COLUMNS = [
   "UNITID", "INSTNM", "CITY", "STABBR", "ZIP", "INSTURL", "CONTROL", "LOCALE",
   "LATITUDE", "LONGITUDE", "ADM_RATE", "SAT_AVG", "UGDS", "TUITIONFEE_IN",
   "TUITIONFEE_OUT", "NPT4_PUB", "NPT4_PRIV", "C150_4", "MD_EARN_WNE_P10",
+  "CURROPER", "MAIN", "PREDDEG", "DISTANCEONLY",
 ] as const;
 type CsvColumn = (typeof CSV_COLUMNS)[number];
 type RawRow = Record<CsvColumn, string | undefined>;
 
-// The bulk CSV represents missing/suppressed values with these tokens
-// (only "NA" appears in the current vintage; the others are defensive
-// against future format drift).
 const MISSING_TOKENS = new Set(["", "NA", "NULL", "PRIVACYSUPPRESSED"]);
 
 const STATE_NAME_BY_CODE: Record<string, string> = {
@@ -112,11 +122,13 @@ const STATE_NAME_BY_CODE: Record<string, string> = {
   RI: "Rhode Island", SC: "South Carolina", SD: "South Dakota",
   TN: "Tennessee", TX: "Texas", UT: "Utah", VT: "Vermont", VA: "Virginia",
   WA: "Washington", WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
+  PR: "Puerto Rico", GU: "Guam", VI: "U.S. Virgin Islands", AS: "American Samoa",
+  MP: "Northern Mariana Islands", FM: "Micronesia", PW: "Palau", MH: "Marshall Islands",
 };
 
-// Editorial "featured" flag, carried forward from the original prototype
-// dataset. Not an official Scorecard field — a lightweight curation
-// choice baked into the base record. Can be overridden per-college via
+// Editorial "featured" flag — a handful of well-known institutions,
+// carried forward from the original prototype dataset. Not an official
+// Scorecard field. Can be overridden per-college via
 // CuratedCollegeData.featured without re-running the importer.
 const FEATURED_SLUGS = new Set([
   "university-of-california-los-angeles",
@@ -127,9 +139,11 @@ const FEATURED_SLUGS = new Set([
 ]);
 
 type Report = {
-  requested: number;
+  totalRawRows: number;
+  passedFilter: number;
+  excluded: number;
+  ownership: { public: number; privateNonprofit: number; privateForProfit: number; unknown: number };
   imported: number;
-  matchFailures: { slug: string; reason: string }[];
   validationErrors: { slug: string; reason: string }[];
   missing: {
     admissionRate: number;
@@ -142,11 +156,12 @@ type Report = {
   };
   duplicateUnitIds: string[];
   duplicateSlugs: string[];
+  slugCollisionsResolved: number;
   invalidCoordinates: number;
 };
 
 // ---------------------------------------------------------------------------
-// Download + cache
+// Download + cache (unchanged from the 20-college version)
 // ---------------------------------------------------------------------------
 
 async function resolveZipUrl(): Promise<string> {
@@ -171,7 +186,6 @@ async function resolveZipUrl(): Promise<string> {
   return match[0];
 }
 
-/** Ensures the institution CSV exists locally, downloading/extracting only if needed. */
 async function ensureCsv(): Promise<string> {
   mkdirSync(RAW_DIR, { recursive: true });
 
@@ -205,18 +219,8 @@ async function ensureCsv(): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
-// Matching
+// Filter + normalize
 // ---------------------------------------------------------------------------
-
-function normName(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-}
-
-function namesLooselyMatch(a: string, b: string): boolean {
-  const na = normName(a);
-  const nb = normName(b);
-  return na === nb || na.includes(nb) || nb.includes(na);
-}
 
 function extractRow(fields: string[], idx: Record<CsvColumn, number>): RawRow {
   const row = {} as RawRow;
@@ -224,80 +228,41 @@ function extractRow(fields: string[], idx: Record<CsvColumn, number>): RawRow {
   return row;
 }
 
-/** Single streaming pass over the CSV, collecting match candidates for every manifest entry at once. */
-async function collectCandidates(csvPath: string): Promise<Map<string, RawRow[]>> {
-  const candidates = new Map<string, RawRow[]>();
-  for (const entry of institutionManifest) candidates.set(entry.slug, []);
-
-  const rl = readline.createInterface({ input: createReadStream(csvPath), crlfDelay: Infinity });
-  let idx: Record<CsvColumn, number> | null = null;
-
-  for await (const line of rl) {
-    if (!idx) {
-      const header = line.split(",");
-      idx = {} as Record<CsvColumn, number>;
-      for (const col of CSV_COLUMNS) idx[col] = header.indexOf(col);
-      const missingCols = CSV_COLUMNS.filter((c) => idx![c] === -1);
-      if (missingCols.length > 0) {
-        throw new Error(`CSV is missing expected column(s): ${missingCols.join(", ")}`);
-      }
-      continue;
-    }
-    if (!line.trim()) continue;
-
-    const fields = line.split(",");
-    const unitId = fields[idx.UNITID];
-    const instnm = fields[idx.INSTNM] ?? "";
-    const stabbr = (fields[idx.STABBR] ?? "").toUpperCase();
-
-    for (const entry of institutionManifest) {
-      const isKnownIdMatch = entry.knownUnitId !== undefined && unitId === String(entry.knownUnitId);
-      const isNameStateMatch =
-        stabbr === entry.expectedState.toUpperCase() && namesLooselyMatch(instnm, entry.searchName);
-      if (isKnownIdMatch || isNameStateMatch) {
-        candidates.get(entry.slug)!.push(extractRow(fields, idx));
-      }
-    }
-  }
-
-  return candidates;
-}
-
-/** Picks the single confident match for one entry, or throws. */
-function resolveEntry(entry: ManifestEntry, candidates: RawRow[]): RawRow {
-  if (candidates.length === 0) {
-    throw new Error(`no CSV rows matched "${entry.searchName}" in ${entry.expectedState}`);
-  }
-  if (candidates.length === 1) return candidates[0];
-
-  // Prefer an exact name match over a substring match (e.g. "University of
-  // Florida" vs. "Baptist University of Florida" / "University of
-  // Florida-Online", which would otherwise both substring-match too).
-  const exactNameMatches = candidates.filter((c) => normName(c.INSTNM ?? "") === normName(entry.searchName));
-  if (exactNameMatches.length === 1) return exactNameMatches[0];
-
-  const pool = exactNameMatches.length > 1 ? exactNameMatches : candidates;
-  const cityMatches = pool.filter((c) => namesLooselyMatch(c.CITY ?? "", entry.expectedCity));
-  if (cityMatches.length === 1) return cityMatches[0];
-
-  const summary = candidates
-    .map((c) => `UNITID=${c.UNITID} "${c.INSTNM}" (${c.CITY}, ${c.STABBR})`)
-    .join("; ");
-  throw new Error(
-    `could not confidently match "${entry.searchName}" in ${entry.expectedCity}, ${entry.expectedState} — candidates: ${summary}`
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Normalize
-// ---------------------------------------------------------------------------
-
 function parseNumeric(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
   const trimmed = value.trim();
   if (MISSING_TOKENS.has(trimmed.toUpperCase())) return undefined;
   const n = Number(trimmed);
   return Number.isFinite(n) ? n : undefined;
+}
+
+/** The national eligibility filter described in the file header comment. */
+function isEligible(row: RawRow): boolean {
+  const curroper = parseNumeric(row.CURROPER);
+  const main = parseNumeric(row.MAIN);
+  const preddeg = parseNumeric(row.PREDDEG);
+  const distanceOnly = parseNumeric(row.DISTANCEONLY);
+  const control = parseNumeric(row.CONTROL);
+  const lat = parseNumeric(row.LATITUDE);
+  const lon = parseNumeric(row.LONGITUDE);
+
+  if (curroper !== 1) return false;
+  if (main !== 1) return false;
+  if (preddeg !== 3) return false;
+  if (distanceOnly === 1) return false;
+  if (control !== 1 && control !== 2 && control !== 3) return false;
+  if (lat === undefined || lon === undefined) return false;
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return false;
+
+  return true;
+}
+
+function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 function mapOwnership(code: number | undefined): Ownership | undefined {
@@ -332,40 +297,36 @@ function normalizeWebsite(url: string | undefined): string | undefined {
   }
 }
 
-function normalize(entry: ManifestEntry, raw: RawRow): College {
-  const stateCode = (raw.STABBR ?? "").toUpperCase();
-  const control = parseNumeric(raw.CONTROL);
-  const netPrice = control === 1 ? parseNumeric(raw.NPT4_PUB) : parseNumeric(raw.NPT4_PRIV);
+function normalize(row: RawRow, slug: string): College {
+  const stateCode = (row.STABBR ?? "").toUpperCase();
+  const control = parseNumeric(row.CONTROL);
+  const netPrice = control === 1 ? parseNumeric(row.NPT4_PUB) : parseNumeric(row.NPT4_PRIV);
 
   return {
-    id: entry.slug,
-    unitId: raw.UNITID ?? "",
-    slug: entry.slug,
-    name: raw.INSTNM || entry.searchName,
-    city: raw.CITY || entry.expectedCity,
+    id: slug,
+    unitId: row.UNITID ?? "",
+    slug,
+    name: row.INSTNM ?? "",
+    city: row.CITY ?? "",
     state: STATE_NAME_BY_CODE[stateCode] ?? stateCode,
     stateCode,
-    zip: raw.ZIP || undefined,
-    latitude: parseNumeric(raw.LATITUDE) ?? NaN,
-    longitude: parseNumeric(raw.LONGITUDE) ?? NaN,
+    zip: row.ZIP || undefined,
+    latitude: parseNumeric(row.LATITUDE) ?? NaN,
+    longitude: parseNumeric(row.LONGITUDE) ?? NaN,
     ownership: mapOwnership(control),
-    undergraduateEnrollment: parseNumeric(raw.UGDS),
-    admissionRate: parseNumeric(raw.ADM_RATE),
-    tuitionInState: parseNumeric(raw.TUITIONFEE_IN),
-    tuitionOutOfState: parseNumeric(raw.TUITIONFEE_OUT),
+    undergraduateEnrollment: parseNumeric(row.UGDS),
+    admissionRate: parseNumeric(row.ADM_RATE),
+    tuitionInState: parseNumeric(row.TUITIONFEE_IN),
+    tuitionOutOfState: parseNumeric(row.TUITIONFEE_OUT),
     averageNetPrice: netPrice,
-    graduationRate: parseNumeric(raw.C150_4),
-    medianEarnings: parseNumeric(raw.MD_EARN_WNE_P10),
-    satAverage: parseNumeric(raw.SAT_AVG),
-    campusSetting: mapCampusSetting(parseNumeric(raw.LOCALE)),
-    website: normalizeWebsite(raw.INSTURL),
-    featured: FEATURED_SLUGS.has(entry.slug),
+    graduationRate: parseNumeric(row.C150_4),
+    medianEarnings: parseNumeric(row.MD_EARN_WNE_P10),
+    satAverage: parseNumeric(row.SAT_AVG),
+    campusSetting: mapCampusSetting(parseNumeric(row.LOCALE)),
+    website: normalizeWebsite(row.INSTURL),
+    featured: FEATURED_SLUGS.has(slug),
   };
 }
-
-// ---------------------------------------------------------------------------
-// Validate
-// ---------------------------------------------------------------------------
 
 function validate(college: College, report: Report): boolean {
   let ok = true;
@@ -397,7 +358,6 @@ function validate(college: College, report: Report): boolean {
   if (college.tuitionInState !== undefined && college.tuitionInState < 0) fail("negative in-state tuition");
   if (college.tuitionOutOfState !== undefined && college.tuitionOutOfState < 0) fail("negative out-of-state tuition");
 
-  // Informational (non-fatal) missing-field counters
   if (college.admissionRate === undefined) report.missing.admissionRate += 1;
   if (college.satAverage === undefined) report.missing.sat += 1;
   if (college.averageNetPrice === undefined) report.missing.netPrice += 1;
@@ -410,10 +370,18 @@ function validate(college: College, report: Report): boolean {
 
 function formatReport(report: Report): string {
   const lines = [
-    "College Scorecard import complete",
+    "College Scorecard national import complete",
     "",
-    `Requested institutions: ${report.requested}`,
-    `Imported: ${report.imported}`,
+    `Total raw Scorecard rows: ${report.totalRawRows}`,
+    `Rows passing eligibility filter: ${report.passedFilter}`,
+    `Rows excluded: ${report.excluded}`,
+    "",
+    `Public: ${report.ownership.public}`,
+    `Private nonprofit: ${report.ownership.privateNonprofit}`,
+    `Private for-profit: ${report.ownership.privateForProfit}`,
+    `Unknown ownership: ${report.ownership.unknown}`,
+    "",
+    `Imported (after validation): ${report.imported}`,
     "",
     `Missing admission rate: ${report.missing.admissionRate}`,
     `Missing SAT data: ${report.missing.sat}`,
@@ -423,13 +391,13 @@ function formatReport(report: Report): string {
     `Missing median earnings: ${report.missing.earnings}`,
     `Missing coordinates: ${report.missing.coordinates}`,
     "",
-    `Duplicate UNITIDs: ${report.duplicateUnitIds.length}${report.duplicateUnitIds.length ? " (" + report.duplicateUnitIds.join(", ") + ")" : ""}`,
-    `Duplicate slugs: ${report.duplicateSlugs.length}${report.duplicateSlugs.length ? " (" + report.duplicateSlugs.join(", ") + ")" : ""}`,
+    `Duplicate UNITIDs: ${report.duplicateUnitIds.length}${report.duplicateUnitIds.length ? " (" + report.duplicateUnitIds.slice(0, 10).join(", ") + (report.duplicateUnitIds.length > 10 ? ", ..." : "") + ")" : ""}`,
+    `Duplicate slugs (after collision resolution): ${report.duplicateSlugs.length}`,
+    `Slug collisions resolved: ${report.slugCollisionsResolved}`,
     `Invalid coordinates: ${report.invalidCoordinates}`,
-    `Match failures: ${report.matchFailures.length}`,
-    ...report.matchFailures.map((f) => `  - ${f.slug}: ${f.reason}`),
     `Validation errors: ${report.validationErrors.length}`,
-    ...report.validationErrors.map((e) => `  - ${e.slug}: ${e.reason}`),
+    ...report.validationErrors.slice(0, 20).map((e) => `  - ${e.slug}: ${e.reason}`),
+    ...(report.validationErrors.length > 20 ? [`  ... and ${report.validationErrors.length - 20} more`] : []),
   ];
   return lines.join("\n") + "\n";
 }
@@ -440,36 +408,75 @@ function formatReport(report: Report): string {
 
 async function main() {
   const report: Report = {
-    requested: institutionManifest.length,
+    totalRawRows: 0,
+    passedFilter: 0,
+    excluded: 0,
+    ownership: { public: 0, privateNonprofit: 0, privateForProfit: 0, unknown: 0 },
     imported: 0,
-    matchFailures: [],
     validationErrors: [],
     missing: { admissionRate: 0, sat: 0, netPrice: 0, graduationRate: 0, tuition: 0, coordinates: 0, earnings: 0 },
     duplicateUnitIds: [],
     duplicateSlugs: [],
+    slugCollisionsResolved: 0,
     invalidCoordinates: 0,
   };
 
   const csvPath = await ensureCsv();
-  console.log("[data:import] Scanning CSV for target institutions...");
-  const candidatesBySlug = await collectCandidates(csvPath);
+  console.log("[data:import] Scanning CSV and applying national eligibility filter...");
 
-  const resolved: { entry: ManifestEntry; raw: RawRow }[] = [];
-  for (const entry of institutionManifest) {
-    try {
-      const raw = resolveEntry(entry, candidatesBySlug.get(entry.slug) ?? []);
-      resolved.push({ entry, raw });
-      console.log(`[data:import] resolved ${entry.slug} -> UNITID=${raw.UNITID} "${raw.INSTNM}"`);
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
-      report.matchFailures.push({ slug: entry.slug, reason });
-      console.error(`[data:import] FAILED to resolve ${entry.slug}: ${reason}`);
+  const eligibleRows: RawRow[] = [];
+  const rl = readline.createInterface({ input: createReadStream(csvPath), crlfDelay: Infinity });
+  let idx: Record<CsvColumn, number> | null = null;
+
+  for await (const line of rl) {
+    if (!idx) {
+      const header = line.split(",");
+      idx = {} as Record<CsvColumn, number>;
+      for (const col of CSV_COLUMNS) idx[col] = header.indexOf(col);
+      const missingCols = CSV_COLUMNS.filter((c) => idx![c] === -1);
+      if (missingCols.length > 0) {
+        throw new Error(`CSV is missing expected column(s): ${missingCols.join(", ")}`);
+      }
+      continue;
+    }
+    if (!line.trim()) continue;
+    report.totalRawRows += 1;
+
+    const fields = line.split(",");
+    const row = extractRow(fields, idx);
+    if (isEligible(row)) {
+      eligibleRows.push(row);
     }
   }
 
+  report.passedFilter = eligibleRows.length;
+  report.excluded = report.totalRawRows - report.passedFilter;
+
+  // Slugs, with deterministic collision resolution: base name -> +state -> +unitId.
+  const usedSlugs = new Map<string, number>();
   const colleges: College[] = [];
-  for (const { entry, raw } of resolved) {
-    const college = normalize(entry, raw);
+
+  for (const row of eligibleRows) {
+    const base = slugify(row.INSTNM ?? "");
+    let slug = base;
+    if (usedSlugs.has(slug)) {
+      slug = `${base}-${(row.STABBR ?? "").toLowerCase()}`;
+      if (usedSlugs.has(slug)) {
+        slug = `${base}-${(row.STABBR ?? "").toLowerCase()}-${row.UNITID}`;
+      }
+      report.slugCollisionsResolved += 1;
+    }
+    usedSlugs.set(slug, (usedSlugs.get(slug) ?? 0) + 1);
+
+    const college = normalize(row, slug);
+
+    switch (college.ownership) {
+      case "public": report.ownership.public += 1; break;
+      case "private-nonprofit": report.ownership.privateNonprofit += 1; break;
+      case "private-for-profit": report.ownership.privateForProfit += 1; break;
+      default: report.ownership.unknown += 1;
+    }
+
     if (validate(college, report)) {
       colleges.push(college);
     }
@@ -484,31 +491,29 @@ async function main() {
   report.duplicateUnitIds = [...unitIdCounts.entries()].filter(([, n]) => n > 1).map(([id]) => id);
   report.duplicateSlugs = [...slugCounts.entries()].filter(([, n]) => n > 1).map(([slug]) => slug);
 
-  const deduped = colleges.filter((c, i) => colleges.findIndex((o) => o.slug === c.slug) === i);
-  deduped.sort((a, b) => a.stateCode.localeCompare(b.stateCode) || a.name.localeCompare(b.name));
+  colleges.sort((a, b) => a.stateCode.localeCompare(b.stateCode) || a.name.localeCompare(b.name));
+  report.imported = colleges.length;
 
-  report.imported = deduped.length;
-
-  const outputPath = resolve(ROOT, "src/data/generated/colleges.json");
-  if (deduped.length === 0) {
+  // --- Safeguard: never let a broken/empty run clobber a good dataset. ---
+  if (colleges.length < MIN_EXPECTED_INSTITUTIONS) {
     console.error(
-      "[data:import] 0 institutions imported — refusing to overwrite an existing colleges.json with an empty dataset."
+      `[data:import] Only ${colleges.length} institutions passed (expected at least ${MIN_EXPECTED_INSTITUTIONS}). ` +
+        "Refusing to overwrite the existing colleges.json — leaving it untouched."
     );
+    writeFileSync(REPORT_PATH, formatReport(report));
     process.exitCode = 1;
-  } else {
-    mkdirSync(resolve(ROOT, "src/data/generated"), { recursive: true });
-    writeFileSync(outputPath, JSON.stringify(deduped, null, 2) + "\n");
+    return;
   }
 
+  mkdirSync(resolve(ROOT, "src/data/generated"), { recursive: true });
+  writeFileSync(OUTPUT_PATH, JSON.stringify(colleges, null, 2) + "\n");
+
   const reportText = formatReport(report);
-  writeFileSync(resolve(ROOT, "src/data/generated/import-report.txt"), reportText);
+  writeFileSync(REPORT_PATH, reportText);
   console.log("\n" + reportText);
 
-  const hasHardFailures = report.matchFailures.length > 0 || report.validationErrors.length > 0;
-  if (hasHardFailures) {
-    console.error(
-      `[data:import] Completed with ${report.matchFailures.length} match failure(s) and ${report.validationErrors.length} validation error(s). See report above.`
-    );
+  if (report.validationErrors.length > 0) {
+    console.error(`[data:import] Completed with ${report.validationErrors.length} validation error(s). See report above.`);
     process.exitCode = 1;
   }
 }

@@ -63,6 +63,8 @@ export type CampusTourPoint = {
   category: CampusTourPointCategory;
   /** True if the coordinate is a placeholder pending manual verification. */
   unverified?: boolean;
+  /** Short provenance note — where this coordinate was verified against. */
+  source?: string;
 };
 
 export type CuratedCollegeData = {

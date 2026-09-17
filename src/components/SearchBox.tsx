@@ -23,7 +23,7 @@ export default function SearchBox({ colleges }: Props) {
 
   const results = useMemo(() => {
     if (query.trim().length === 0) return [];
-    return colleges.filter((college) => matches(college, query)).slice(0, 8);
+    return colleges.filter((college) => matches(college, query)).slice(0, 20);
   }, [colleges, query]);
 
   const showDropdown = isFocused && query.trim().length > 0;
@@ -42,7 +42,7 @@ export default function SearchBox({ colleges }: Props) {
       />
 
       {showDropdown && (
-        <ul className="absolute z-30 mt-2 w-full overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-xl">
+        <ul className="absolute z-30 mt-2 max-h-80 w-full overflow-y-auto rounded-2xl border border-slate-100 bg-white shadow-xl">
           {results.length === 0 ? (
             <li className="px-5 py-3 text-sm text-slate-400">No colleges found</li>
           ) : (
