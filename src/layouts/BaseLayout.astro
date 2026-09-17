@@ -5,9 +5,19 @@ import "@/styles/global.css";
 type Props = {
   title: string;
   description?: string;
+  /** JSON-LD object (e.g. schema.org CollegeOrUniversity) — only pass honestly-mapped fields. */
+  structuredData?: Record<string, unknown>;
+  noindex?: boolean;
 };
 
-const { title, description = "Explore US colleges like places, not rankings." } = Astro.props;
+const {
+  title,
+  description = "Explore US colleges like places, not rankings.",
+  structuredData,
+  noindex = false,
+} = Astro.props;
+
+const canonicalUrl = new URL(Astro.url.pathname, Astro.site).toString();
 ---
 
 <!doctype html>
@@ -17,7 +27,24 @@ const { title, description = "Explore US colleges like places, not rankings." } 
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{title}</title>
     <meta name="description" content={description} />
+    <link rel="canonical" href={canonicalUrl} />
+    {noindex && <meta name="robots" content="noindex,follow" />}
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="College Explorer" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:image" content={new URL("/favicon.svg", Astro.site).toString()} />
+
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+
+    {structuredData && (
+      <script type="application/ld+json" is:inline set:html={JSON.stringify(structuredData)} />
+    )}
   </head>
   <body class="min-h-screen">
     <Header />

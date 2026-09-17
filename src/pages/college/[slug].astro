@@ -3,10 +3,12 @@ import BaseLayout from "@/layouts/BaseLayout.astro";
 import MapExplorer from "@/components/MapExplorer.tsx";
 import CampusExplorer from "@/components/CampusExplorer.astro";
 import StatTile from "@/components/StatTile.astro";
+import NearbyColleges from "@/components/NearbyColleges.astro";
 import SaveButton from "@/components/SaveButton.tsx";
 import TeleportButton from "@/components/TeleportButton.tsx";
-import { getAllColleges, getCollegeBySlug } from "@/lib/colleges";
+import { getAllColleges, getCollegeBySlug, getAllSlugs } from "@/lib/colleges";
 import { getCuratedDataByUnitId } from "@/data/curated";
+import { getDisplayName } from "@/lib/search";
 import {
   formatNumber,
   formatOwnership,
@@ -27,10 +29,33 @@ if (!college) {
 }
 
 const curated = getCuratedDataByUnitId(college.unitId);
+const allSlugs = getAllSlugs();
 const campusSetting = curated?.campusSettingOverride ?? college.campusSetting;
+const displayName = getDisplayName(college);
+
+const pageTitle = `${displayName} — Campus, Costs & Admissions | College Explorer`;
+const pageDescription = `${displayName} in ${college.city}, ${college.state}: campus map, Street View, enrollment, admission rate, tuition, and nearby colleges to explore.`;
+
+const structuredData = {
+  "@context": "https://schema.org",
+  "@type": "CollegeOrUniversity",
+  name: college.name,
+  address: {
+    "@type": "PostalAddress",
+    addressLocality: college.city,
+    addressRegion: college.stateCode,
+    addressCountry: "US",
+  },
+  geo: {
+    "@type": "GeoCoordinates",
+    latitude: college.latitude,
+    longitude: college.longitude,
+  },
+  ...(college.website ? { url: college.website } : {}),
+};
 ---
 
-<BaseLayout title={`${college.name} — College Explorer`} description={`${college.name} in ${college.city}, ${college.state}.`}>
+<BaseLayout title={pageTitle} description={pageDescription} structuredData={structuredData}>
   <section class="mx-auto max-w-5xl px-4 pt-8 pb-6 md:px-8 md:pt-12">
     <p class="text-sm font-medium text-horizon-600">
       <a href={`/state/${college.state.toLowerCase().replace(/\s+/g, "-")}`} class="hover:underline">
@@ -41,7 +66,7 @@ const campusSetting = curated?.campusSettingOverride ?? college.campusSetting;
     <div class="mt-3 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
       <div>
         <h1 class="font-display text-3xl font-semibold tracking-tight text-slate-900 md:text-4xl">
-          {college.name}
+          {displayName}
         </h1>
         <p class="mt-2 text-slate-500">
           {college.city}, {college.state} · {formatOwnership(college.ownership)}
@@ -57,7 +82,7 @@ const campusSetting = curated?.campusSettingOverride ?? college.campusSetting;
         >
           Explore Campus
         </a>
-        <TeleportButton client:load currentSlug={college.slug} />
+        <TeleportButton client:load allSlugs={allSlugs} currentSlug={college.slug} />
       </div>
     </div>
   </section>
@@ -66,18 +91,44 @@ const campusSetting = curated?.campusSettingOverride ?? college.campusSetting;
     <h2 class="mb-3 font-display text-2xl font-semibold text-slate-900">At a Glance</h2>
     <dl class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
       <StatTile label="Undergrad enrollment" value={formatNumber(college.undergraduateEnrollment)} />
-      <StatTile label="Admission rate" value={formatPercent(college.admissionRate)} />
+      <StatTile
+        label="Admission rate"
+        value={formatPercent(college.admissionRate)}
+        hint="Share of applicants admitted, as reported to College Scorecard."
+      />
       <StatTile label="In-state tuition" value={formatCurrency(college.tuitionInState)} />
       <StatTile label="Out-of-state tuition" value={formatCurrency(college.tuitionOutOfState)} />
-      <StatTile label="Average net price" value={formatCurrency(college.averageNetPrice)} />
-      <StatTile label="Graduation rate" value={formatPercent(college.graduationRate)} />
-      <StatTile label="SAT average" value={formatNumber(college.satAverage)} />
-      <StatTile
-        label="Website"
-        value={formatOrFallback(college.website)}
-        href={college.website}
-      />
+      {college.averageNetPrice !== undefined && (
+        <StatTile
+          label="Average net price"
+          value={formatCurrency(college.averageNetPrice)}
+          hint="What students actually pay on average after grants/scholarships — not the sticker tuition price."
+        />
+      )}
+      {college.graduationRate !== undefined && (
+        <StatTile
+          label="Graduation rate"
+          value={formatPercent(college.graduationRate)}
+          hint="Share of first-time, full-time students completing a bachelor's degree within 150% of normal time (Scorecard field C150_4)."
+        />
+      )}
+      {college.satAverage !== undefined && (
+        <StatTile label="SAT average" value={formatNumber(college.satAverage)} />
+      )}
+      {college.medianEarnings !== undefined && (
+        <StatTile
+          label="Median earnings"
+          value={formatCurrency(college.medianEarnings)}
+          hint="Median earnings of former students working and not enrolled, 10 years after entry (Scorecard field MD_EARN_WNE_P10)."
+        />
+      )}
+      {college.website && (
+        <StatTile label="Website" value={formatOrFallback(college.website)} href={college.website} />
+      )}
     </dl>
+    <p class="mt-3 text-xs text-slate-400">
+      Data from the US Dept of Education College Scorecard. <a href="/data-sources" class="underline hover:text-slate-600">How to read this data</a>
+    </p>
   </section>
 
   <section class="mx-auto max-w-5xl px-4 pb-10 md:px-8">
@@ -87,10 +138,12 @@ const campusSetting = curated?.campusSettingOverride ?? college.campusSetting;
 
   <section class="mx-auto max-w-5xl px-4 pb-16 md:px-8">
     <CampusExplorer
-      collegeName={college.shortName ?? college.name}
+      collegeName={college.shortName ?? displayName}
       fallbackLatitude={college.latitude}
       fallbackLongitude={college.longitude}
       tourPoints={curated?.tourPoints}
     />
   </section>
+
+  <NearbyColleges slug={college.slug} />
 </BaseLayout>

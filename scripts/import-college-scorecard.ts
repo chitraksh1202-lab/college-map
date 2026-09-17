@@ -31,40 +31,55 @@
  * NATIONAL ELIGIBILITY FILTER — every column below is an official,
  * documented College Scorecard field (data dictionary at
  * https://collegescorecard.ed.gov/data/documentation/). Nothing here is
- * guessed:
+ * guessed. This filter was revised after an evidence-based audit (see
+ * import-report.txt and the audit notes below) that compared it against
+ * three alternatives on the real data before changing anything.
  *
  *   CURROPER == 1        Currently operating institution (excludes closed
- *                        schools — Scorecard's own "currently operating"
- *                        flag).
- *   MAIN == 1            Main campus record, not a branch/additional
- *                        location. Branch-campus rows for the same parent
- *                        institution are excluded to avoid near-duplicate
- *                        entries flooding the map; this is the one
- *                        deliberate simplification and is revisited if we
- *                        ever want branch campuses as distinct pins.
- *   PREDDEG == 3         "Predominantly bachelor's-degree granting" — the
- *                        Scorecard field that directly captures
- *                        "four-year, bachelor's-oriented, undergraduate
- *                        degree-granting." This single field also
- *                        excludes predominantly-graduate (4),
- *                        predominantly-associate's (2), and
- *                        predominantly-certificate (1) institutions in
- *                        one documented step, rather than us guessing at
- *                        a combination of other fields.
+ *                        schools).
+ *   PREDDEG == 3         "Predominantly bachelor's-degree granting." Chosen
+ *                        over the seemingly-more-obvious `ICLEVEL == 1`
+ *                        ("four-year institution" level code) because
+ *                        ICLEVEL has real coverage gaps in this dataset —
+ *                        it's NA for Harvey Mudd College, University of
+ *                        Denver, Trinity College (CT), and Western
+ *                        Connecticut State University, among others.
+ *                        Filtering on ICLEVEL would have silently dropped
+ *                        well-known legitimate universities. PREDDEG==3 is
+ *                        well-populated and directly captures "four-year,
+ *                        bachelor's-oriented, undergraduate degree-granting"
+ *                        in one documented step.
+ *   UGDS >= 50            Undergraduate enrollment floor — "a meaningful
+ *                        physical undergraduate campus" per the brief.
+ *                        AUDIT FINDING: the previous filter required
+ *                        MAIN == 1 (main campus, not a branch) instead of
+ *                        this. That was backwards — it excluded large,
+ *                        clearly legitimate regional campuses (Rutgers
+ *                        University-Newark: 7,709 undergrads; Rutgers
+ *                        University-Camden: 3,753; Penn State Erie-Behrend:
+ *                        3,240) simply because IPEDS books them as
+ *                        secondary campuses in a multi-campus system, while
+ *                        still including single-digit-enrollment seminaries
+ *                        (Saint John's Seminary: 7 students; Adler
+ *                        University: 9) that happened to be flagged "main."
+ *                        Enrollment size is a far more honest signal of
+ *                        "meaningful physical undergraduate campus" than an
+ *                        administrative main-campus flag. Net effect of
+ *                        this change: +145 legitimate campuses added,
+ *                        -57 near-zero-enrollment seminaries/Bible
+ *                        colleges/specialty schools removed (1,733 -> 1,821).
  *   DISTANCEONLY != 1    Scorecard's own flag for "distance-education-only"
  *                        institutions — used to exclude online-only
  *                        schools from a geographic exploration product.
  *   CONTROL in {1,2,3}   Public / private nonprofit / private for-profit —
- *                        all three ownership types are kept. We do not
- *                        add a separate for-profit-specific carve-out
- *                        beyond this: the PREDDEG==3 requirement above
- *                        already excludes the vocational/certificate-style
- *                        for-profit schools that wouldn't fit undergraduate
- *                        college exploration, without us having to invent
- *                        a second, less-documented heuristic.
- *   Valid LATITUDE/LONGITUDE   Must be present and within valid ranges —
- *                        "a meaningful physical campus with valid US
- *                        coordinates" per the brief.
+ *                        all three ownership types are kept. No separate
+ *                        for-profit-specific carve-out is applied: the
+ *                        PREDDEG==3 + UGDS>=50 requirements above already
+ *                        exclude the vocational/certificate-style for-profit
+ *                        schools that wouldn't fit undergraduate college
+ *                        exploration, without inventing a second,
+ *                        less-documented heuristic aimed only at for-profits.
+ *   Valid LATITUDE/LONGITUDE   Must be present and within valid ranges.
  * ---------------------------------------------------------------------
  */
 import { writeFileSync, mkdirSync, existsSync, createReadStream } from "node:fs";
@@ -102,10 +117,10 @@ const CSV_COLUMNS = [
   "UNITID", "INSTNM", "CITY", "STABBR", "ZIP", "INSTURL", "CONTROL", "LOCALE",
   "LATITUDE", "LONGITUDE", "ADM_RATE", "SAT_AVG", "UGDS", "TUITIONFEE_IN",
   "TUITIONFEE_OUT", "NPT4_PUB", "NPT4_PRIV", "C150_4", "MD_EARN_WNE_P10",
-  "CURROPER", "MAIN", "PREDDEG", "DISTANCEONLY",
+  "CURROPER", "PREDDEG", "DISTANCEONLY",
 ] as const;
 type CsvColumn = (typeof CSV_COLUMNS)[number];
-type RawRow = Record<CsvColumn, string | undefined>;
+export type RawRow = Record<CsvColumn, string | undefined>;
 
 const MISSING_TOKENS = new Set(["", "NA", "NULL", "PRIVACYSUPPRESSED"]);
 
@@ -228,7 +243,7 @@ function extractRow(fields: string[], idx: Record<CsvColumn, number>): RawRow {
   return row;
 }
 
-function parseNumeric(value: string | undefined): number | undefined {
+export function parseNumeric(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
   const trimmed = value.trim();
   if (MISSING_TOKENS.has(trimmed.toUpperCase())) return undefined;
@@ -237,18 +252,20 @@ function parseNumeric(value: string | undefined): number | undefined {
 }
 
 /** The national eligibility filter described in the file header comment. */
-function isEligible(row: RawRow): boolean {
+const MIN_UNDERGRAD_ENROLLMENT = 50;
+
+export function isEligible(row: RawRow): boolean {
   const curroper = parseNumeric(row.CURROPER);
-  const main = parseNumeric(row.MAIN);
   const preddeg = parseNumeric(row.PREDDEG);
+  const ugds = parseNumeric(row.UGDS);
   const distanceOnly = parseNumeric(row.DISTANCEONLY);
   const control = parseNumeric(row.CONTROL);
   const lat = parseNumeric(row.LATITUDE);
   const lon = parseNumeric(row.LONGITUDE);
 
   if (curroper !== 1) return false;
-  if (main !== 1) return false;
   if (preddeg !== 3) return false;
+  if ((ugds ?? 0) < MIN_UNDERGRAD_ENROLLMENT) return false;
   if (distanceOnly === 1) return false;
   if (control !== 1 && control !== 2 && control !== 3) return false;
   if (lat === undefined || lon === undefined) return false;
@@ -257,7 +274,7 @@ function isEligible(row: RawRow): boolean {
   return true;
 }
 
-function slugify(name: string): string {
+export function slugify(name: string): string {
   return name
     .toLowerCase()
     .replace(/&/g, "and")
@@ -518,7 +535,12 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error("[data:import] Fatal error:", err);
-  process.exitCode = 1;
-});
+// Guard so this module can be imported by tests (for the pure functions
+// exported above) without triggering a real download/import run. Vitest
+// sets process.env.VITEST automatically.
+if (!process.env.VITEST) {
+  main().catch((err) => {
+    console.error("[data:import] Fatal error:", err);
+    process.exitCode = 1;
+  });
+}

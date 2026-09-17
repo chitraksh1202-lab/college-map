@@ -1,59 +1,116 @@
-import { useMemo, useState } from "react";
-import type { College } from "@/lib/types";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { CollegePreview } from "@/lib/colleges";
+import { searchColleges, getDisplayName } from "@/lib/search";
+import { formatOwnership } from "@/lib/format";
 
 type Props = {
-  colleges: College[];
+  colleges: CollegePreview[];
 };
-
-function matches(college: College, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (q.length === 0) return false;
-  return (
-    college.name.toLowerCase().includes(q) ||
-    (college.shortName?.toLowerCase().includes(q) ?? false) ||
-    college.city.toLowerCase().includes(q) ||
-    college.state.toLowerCase().includes(q) ||
-    college.stateCode.toLowerCase() === q
-  );
-}
 
 export default function SearchBox({ colleges }: Props) {
   const [query, setQuery] = useState("");
-  const [isFocused, setIsFocused] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLUListElement | null>(null);
 
-  const results = useMemo(() => {
-    if (query.trim().length === 0) return [];
-    return colleges.filter((college) => matches(college, query)).slice(0, 20);
-  }, [colleges, query]);
+  const results = useMemo(() => searchColleges(colleges, query, 15), [colleges, query]);
+  const showDropdown = isOpen && query.trim().length > 0;
 
-  const showDropdown = isFocused && query.trim().length > 0;
+  useEffect(() => {
+    setActiveIndex(-1);
+  }, [query]);
+
+  useEffect(() => {
+    function onClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (activeIndex < 0 || !listRef.current) return;
+    const item = listRef.current.children[activeIndex] as HTMLElement | undefined;
+    item?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex]);
+
+  function goTo(slug: string) {
+    window.location.href = `/college/${slug}`;
+  }
+
+  function onKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (!showDropdown || results.length === 0) return;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActiveIndex((i) => (i + 1) % results.length);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActiveIndex((i) => (i <= 0 ? results.length - 1 : i - 1));
+    } else if (event.key === "Enter") {
+      if (activeIndex >= 0 && activeIndex < results.length) {
+        event.preventDefault();
+        goTo(results[activeIndex].slug);
+      }
+    } else if (event.key === "Escape") {
+      setIsOpen(false);
+      setActiveIndex(-1);
+    }
+  }
+
+  const activeId = activeIndex >= 0 ? `search-result-${activeIndex}` : undefined;
 
   return (
-    <div className="relative mx-auto w-full max-w-xl">
+    <div ref={containerRef} className="relative mx-auto w-full max-w-xl">
       <input
         type="search"
+        role="combobox"
+        aria-expanded={showDropdown}
+        aria-controls="search-results-list"
+        aria-autocomplete="list"
+        aria-activedescendant={activeId}
         value={query}
-        onChange={(event) => setQuery(event.target.value)}
-        onFocus={() => setIsFocused(true)}
-        onBlur={() => setTimeout(() => setIsFocused(false), 150)}
+        onChange={(event) => {
+          setQuery(event.target.value);
+          setIsOpen(true);
+        }}
+        onFocus={() => setIsOpen(true)}
+        onKeyDown={onKeyDown}
         placeholder="Search by college, city, or state…"
         aria-label="Search colleges"
         className="w-full rounded-full border border-slate-200 bg-white px-5 py-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-horizon-400 focus:ring-2 focus:ring-horizon-100"
       />
 
       {showDropdown && (
-        <ul className="absolute z-30 mt-2 max-h-80 w-full overflow-y-auto rounded-2xl border border-slate-100 bg-white shadow-xl">
+        <ul
+          id="search-results-list"
+          ref={listRef}
+          role="listbox"
+          className="absolute z-30 mt-2 max-h-80 w-full overflow-y-auto rounded-2xl border border-slate-100 bg-white shadow-xl"
+        >
           {results.length === 0 ? (
             <li className="px-5 py-3 text-sm text-slate-400">No colleges found</li>
           ) : (
-            results.map((college) => (
-              <li key={college.slug}>
+            results.map((college, index) => (
+              <li key={college.slug} id={`search-result-${index}`} role="option" aria-selected={index === activeIndex}>
                 <a
                   href={`/college/${college.slug}`}
-                  className="flex items-center justify-between gap-3 px-5 py-3 text-sm hover:bg-horizon-50"
+                  onMouseEnter={() => setActiveIndex(index)}
+                  className={`flex items-center justify-between gap-3 px-5 py-3 text-sm ${
+                    index === activeIndex ? "bg-horizon-50" : "hover:bg-horizon-50"
+                  }`}
                 >
-                  <span className="font-medium text-slate-800">{college.name}</span>
-                  <span className="text-slate-400">
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium text-slate-800">
+                      {getDisplayName(college)}
+                    </span>
+                    <span className="block truncate text-xs text-slate-400">
+                      {formatOwnership(college.ownership)}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-right text-slate-400">
                     {college.city}, {college.stateCode}
                   </span>
                 </a>

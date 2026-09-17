@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import maplibregl, { type GeoJSONSource, type MapLayerMouseEvent } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import type { College } from "@/lib/types";
-import { formatOwnership, formatPercent, formatNumber } from "@/lib/format";
+import type { CollegePreview } from "@/lib/colleges";
+import { formatOwnership, formatNumber } from "@/lib/format";
+import { getDisplayName } from "@/lib/search";
 
 type Props = {
-  colleges: College[];
+  colleges: CollegePreview[];
+  showCaliforniaShortcut?: boolean;
 };
 
 /**
@@ -26,7 +28,18 @@ const CALIFORNIA_BOUNDS: [[number, number], [number, number]] = [
   [-114.0, 42.1],
 ];
 
-function collegesToGeoJSON(colleges: College[]): GeoJSON.FeatureCollection {
+/** Bounding box around the given colleges, with a small margin so edge points aren't clipped. */
+function boundsFor(colleges: CollegePreview[]): [[number, number], [number, number]] {
+  const lats = colleges.map((c) => c.latitude);
+  const lons = colleges.map((c) => c.longitude);
+  const margin = 0.5;
+  return [
+    [Math.min(...lons) - margin, Math.min(...lats) - margin],
+    [Math.max(...lons) + margin, Math.max(...lats) + margin],
+  ];
+}
+
+function collegesToGeoJSON(colleges: CollegePreview[]): GeoJSON.FeatureCollection {
   return {
     type: "FeatureCollection",
     features: colleges.map((college) => ({
@@ -37,12 +50,12 @@ function collegesToGeoJSON(colleges: College[]): GeoJSON.FeatureCollection {
   };
 }
 
-export default function MapExplorer({ colleges }: Props) {
+export default function MapExplorer({ colleges, showCaliforniaShortcut = false }: Props) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
-  const [selected, setSelected] = useState<College | null>(null);
+  const [selected, setSelected] = useState<CollegePreview | null>(null);
   const collegesBySlug = useMemo(() => {
-    const map = new Map<string, College>();
+    const map = new Map<string, CollegePreview>();
     for (const college of colleges) map.set(college.slug, college);
     return map;
   }, [colleges]);
@@ -50,11 +63,13 @@ export default function MapExplorer({ colleges }: Props) {
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
+    const single = colleges.length === 1;
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
       style: DEV_MAP_STYLE,
-      bounds: US_BOUNDS,
-      fitBoundsOptions: { padding: 32 },
+      ...(single
+        ? { center: [colleges[0].longitude, colleges[0].latitude] as [number, number], zoom: 13 }
+        : { bounds: colleges.length > 0 ? boundsFor(colleges) : US_BOUNDS, fitBoundsOptions: { padding: 32 } }),
       attributionControl: { compact: true },
     });
     mapRef.current = map;
@@ -157,13 +172,15 @@ export default function MapExplorer({ colleges }: Props) {
     <div className="relative h-[70vh] min-h-[420px] w-full overflow-hidden rounded-3xl border border-horizon-100 shadow-xl shadow-horizon-900/5 md:h-[75vh]">
       <div ref={mapContainerRef} className="h-full w-full" />
 
-      <button
-        type="button"
-        onClick={flyToCalifornia}
-        className="absolute left-4 top-4 rounded-full bg-white/95 px-4 py-2 text-sm font-medium text-horizon-800 shadow-md backdrop-blur transition hover:bg-white"
-      >
-        Explore California
-      </button>
+      {showCaliforniaShortcut && (
+        <button
+          type="button"
+          onClick={flyToCalifornia}
+          className="absolute left-4 top-4 rounded-full bg-white/95 px-4 py-2 text-sm font-medium text-horizon-800 shadow-md backdrop-blur transition hover:bg-white"
+        >
+          Explore California
+        </button>
+      )}
 
       {selected && (
         <>
@@ -176,9 +193,9 @@ export default function MapExplorer({ colleges }: Props) {
           />
           <div className="fixed inset-x-0 bottom-0 z-20 rounded-t-3xl bg-white p-5 shadow-2xl md:absolute md:bottom-4 md:right-4 md:left-auto md:top-auto md:w-80 md:rounded-2xl">
             <div className="mb-3 flex items-start justify-between gap-3">
-              <div>
-                <h3 className="font-display text-lg font-semibold text-slate-900">
-                  {selected.name}
+              <div className="min-w-0">
+                <h3 className="break-words font-display text-lg font-semibold text-slate-900">
+                  {getDisplayName(selected)}
                 </h3>
                 <p className="text-sm text-slate-500">
                   {selected.city}, {selected.stateCode}
@@ -188,7 +205,7 @@ export default function MapExplorer({ colleges }: Props) {
                 type="button"
                 onClick={() => setSelected(null)}
                 aria-label="Close"
-                className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                className="shrink-0 rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
               >
                 ✕
               </button>
@@ -205,18 +222,6 @@ export default function MapExplorer({ colleges }: Props) {
                 <dt className="text-slate-400">Enrollment</dt>
                 <dd className="font-medium text-slate-700">
                   {formatNumber(selected.undergraduateEnrollment)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-slate-400">Admit rate</dt>
-                <dd className="font-medium text-slate-700">
-                  {formatPercent(selected.admissionRate)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-slate-400">Setting</dt>
-                <dd className="font-medium capitalize text-slate-700">
-                  {selected.campusSetting ?? "Data unavailable"}
                 </dd>
               </div>
             </dl>

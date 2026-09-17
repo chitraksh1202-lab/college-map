@@ -1,22 +1,22 @@
 College Scorecard national import complete
 
 Total raw Scorecard rows: 6273
-Rows passing eligibility filter: 1733
-Rows excluded: 4540
+Rows passing eligibility filter: 1821
+Rows excluded: 4452
 
-Public: 542
-Private nonprofit: 1137
-Private for-profit: 54
+Public: 585
+Private nonprofit: 1124
+Private for-profit: 112
 Unknown ownership: 0
 
-Imported (after validation): 1733
+Imported (after validation): 1821
 
-Missing admission rate: 251
-Missing SAT data: 764
-Missing net price: 119
-Missing graduation rate: 85
-Missing tuition: 72
-Missing median earnings: 129
+Missing admission rate: 271
+Missing SAT data: 814
+Missing net price: 109
+Missing graduation rate: 96
+Missing tuition: 65
+Missing median earnings: 99
 Missing coordinates: 0
 
 Duplicate UNITIDs: 0

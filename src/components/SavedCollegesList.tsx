@@ -1,9 +1,15 @@
 import { useEffect, useState } from "react";
-import { getAllColleges } from "@/lib/colleges";
+import type { CollegePreview } from "@/lib/colleges";
 import { getSavedSlugs, SAVED_COLLEGES_EVENT, unsaveCollege } from "@/lib/saved-colleges";
+import { getDisplayName } from "@/lib/search";
 import { formatOwnership } from "@/lib/format";
 
-export default function SavedCollegesList() {
+type Props = {
+  /** Passed from the server — never imports lib/colleges.ts client-side (keeps this island's bundle tiny). */
+  colleges: CollegePreview[];
+};
+
+export default function SavedCollegesList({ colleges }: Props) {
   const [slugs, setSlugs] = useState<string[] | null>(null);
 
   useEffect(() => {
@@ -21,9 +27,9 @@ export default function SavedCollegesList() {
     return <p className="text-slate-400">Loading…</p>;
   }
 
-  const colleges = getAllColleges().filter((c) => slugs.includes(c.slug));
+  const saved = colleges.filter((c) => slugs.includes(c.slug));
 
-  if (colleges.length === 0) {
+  if (saved.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center">
         <p className="text-slate-500">You haven't saved any colleges yet.</p>
@@ -39,13 +45,13 @@ export default function SavedCollegesList() {
 
   return (
     <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {colleges.map((college) => (
+      {saved.map((college) => (
         <li
           key={college.slug}
           className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition hover:shadow-md"
         >
           <a href={`/college/${college.slug}`} className="block">
-            <p className="font-display font-semibold text-slate-900">{college.name}</p>
+            <p className="font-display font-semibold text-slate-900">{getDisplayName(college)}</p>
             <p className="mt-1 text-sm text-slate-500">
               {college.city}, {college.stateCode} · {formatOwnership(college.ownership)}
             </p>

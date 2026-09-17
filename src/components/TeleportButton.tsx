@@ -1,18 +1,30 @@
 import { useState } from "react";
-import { getRandomCollege } from "@/lib/colleges";
+import { getTeleportHistory, recordTeleport } from "@/lib/teleport-history";
 
 type Props = {
+  /** All college slugs to pick from — pass slugs only, never full records, to keep this island's bundle tiny. */
+  allSlugs: string[];
   currentSlug?: string;
   className?: string;
 };
 
-export default function TeleportButton({ currentSlug, className }: Props) {
+function pickRandom(allSlugs: string[], exclude: string[]): string {
+  const excluded = new Set(exclude);
+  const pool = allSlugs.filter((slug) => !excluded.has(slug));
+  const candidates = pool.length > 0 ? pool : allSlugs;
+  return candidates[Math.floor(Math.random() * candidates.length)];
+}
+
+export default function TeleportButton({ allSlugs, currentSlug, className }: Props) {
   const [isNavigating, setIsNavigating] = useState(false);
 
   function teleport() {
     setIsNavigating(true);
-    const destination = getRandomCollege(currentSlug);
-    window.location.href = `/college/${destination.slug}`;
+    const recent = getTeleportHistory();
+    const exclude = currentSlug ? [...recent, currentSlug] : recent;
+    const destinationSlug = pickRandom(allSlugs, exclude);
+    recordTeleport(destinationSlug);
+    window.location.href = `/college/${destinationSlug}`;
   }
 
   return (
@@ -26,7 +38,7 @@ export default function TeleportButton({ currentSlug, className }: Props) {
       }
     >
       <span aria-hidden="true">🎲</span>
-      {isNavigating ? "Teleporting…" : "Teleport Me"}
+      {isNavigating ? "Teleporting…" : "Teleport me somewhere new"}
     </button>
   );
 }

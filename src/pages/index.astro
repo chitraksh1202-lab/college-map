@@ -2,26 +2,37 @@
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import MapExplorer from "@/components/MapExplorer.tsx";
 import SearchBox from "@/components/SearchBox.tsx";
-import { getAllColleges } from "@/lib/colleges";
+import TeleportButton from "@/components/TeleportButton.tsx";
+import { getAllCollegePreviews, getAllSlugs } from "@/lib/colleges";
 
-const colleges = getAllColleges();
+const colleges = getAllCollegePreviews();
+const count = colleges.length;
+const allSlugs = getAllSlugs();
 ---
 
-<BaseLayout title="College Explorer — Explore colleges across America">
+<BaseLayout
+  title="College Explorer — Explore colleges across America"
+  description={`Explore ${count.toLocaleString()} US colleges like places, not rankings — an interactive map, campus Street View, and playful discovery.`}
+>
   <section class="mx-auto max-w-6xl px-4 pt-10 pb-6 text-center md:px-8 md:pt-16">
     <h1 class="font-display text-4xl font-semibold tracking-tight text-slate-900 md:text-5xl">
-      Explore colleges across America
+      Explore colleges like places, not rankings
     </h1>
     <p class="mx-auto mt-3 max-w-xl text-base text-slate-500 md:text-lg">
-      Discover where you could live, study, and spend the next four years.
+      Explore {count.toLocaleString()} colleges across America — discover where you could live,
+      study, and spend the next four years.
     </p>
 
     <div class="mt-6">
       <SearchBox client:load colleges={colleges} />
     </div>
+
+    <div class="mt-4 flex justify-center">
+      <TeleportButton client:load allSlugs={allSlugs} />
+    </div>
   </section>
 
   <section class="mx-auto max-w-6xl px-4 pb-16 md:px-8">
-    <MapExplorer client:load colleges={colleges} />
+    <MapExplorer client:load colleges={colleges} showCaliforniaShortcut />
   </section>
 </BaseLayout>

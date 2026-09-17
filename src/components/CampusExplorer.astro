@@ -41,8 +41,11 @@ function streetViewSrc(point: CampusTourPoint): string {
 
   {
     !embedKey ? (
-      <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">
-        Street View isn't configured yet. Set{" "}
+      <div
+        id="street-view-fallback"
+        class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500"
+      >
+        Street View isn't configured yet for <span id="street-view-fallback-name">{points[0].name}</span>. Set{" "}
         <code class="rounded bg-slate-200 px-1.5 py-0.5">PUBLIC_GOOGLE_MAPS_EMBED_KEY</code> in
         your environment to enable this section.
       </div>
@@ -69,6 +72,7 @@ function streetViewSrc(point: CampusTourPoint): string {
             type="button"
             class="tour-point-button rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-horizon-300 hover:text-horizon-700 aria-pressed:border-horizon-500 aria-pressed:bg-horizon-50 aria-pressed:text-horizon-800"
             data-src={streetViewSrc(point)}
+            data-name={point.name}
             aria-pressed={index === 0 ? "true" : "false"}
           >
             {point.name}
@@ -89,16 +93,24 @@ function streetViewSrc(point: CampusTourPoint): string {
 </section>
 
 <script>
+  // Selection state (aria-pressed, fallback label) updates regardless of
+  // whether a Street View embed key is configured — only the iframe src
+  // update depends on the iframe actually existing.
   const frame = document.getElementById("street-view-frame") as HTMLIFrameElement | null;
+  const fallbackName = document.getElementById("street-view-fallback-name");
   const buttons = document.querySelectorAll<HTMLButtonElement>(".tour-point-button");
 
   buttons.forEach((button) => {
     button.addEventListener("click", () => {
-      const src = button.dataset.src;
-      if (!src || !frame) return;
-      frame.src = src;
       buttons.forEach((b) => b.setAttribute("aria-pressed", "false"));
       button.setAttribute("aria-pressed", "true");
+
+      if (frame && button.dataset.src) {
+        frame.src = button.dataset.src;
+      }
+      if (fallbackName && button.dataset.name) {
+        fallbackName.textContent = button.dataset.name;
+      }
     });
   });
 </script>
