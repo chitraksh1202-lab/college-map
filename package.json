@@ -12,6 +12,7 @@
     "lint": "eslint . --ext .ts,.tsx,.astro",
     "format": "prettier --write .",
     "data:import": "tsx scripts/import-college-scorecard.ts",
+    "data:check": "tsx scripts/data-check.ts",
     "test": "vitest run"
   },
   "dependencies": {

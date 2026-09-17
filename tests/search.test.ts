@@ -22,7 +22,7 @@ describe("searchColleges ranking against the real national dataset", () => {
     expect(topSlug("usc")).toBe("university-of-southern-california");
   });
   it("georgia tech -> Georgia Institute of Technology", () => {
-    expect(topSlug("georgia tech")).toBe("georgia-institute-of-technology-main-campus");
+    expect(topSlug("georgia tech")).toBe("georgia-institute-of-technology");
   });
   it("stanford -> Stanford University", () => {
     expect(topSlug("stanford")).toBe("stanford-university");

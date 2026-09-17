@@ -20,7 +20,14 @@ Missing median earnings: 99
 Missing coordinates: 0
 
 Duplicate UNITIDs: 0
-Duplicate slugs (after collision resolution): 0
-Slug collisions resolved: 13
+Duplicate slugs: 0
 Invalid coordinates: 0
+
+-- Stable slug registry --
+Existing stable slugs reused: 1821
+New slugs assigned: 0
+Slug collisions encountered: 0
+Historical registry entries not in current dataset: 0
+Redirects preserved: 1
+
 Validation errors: 0

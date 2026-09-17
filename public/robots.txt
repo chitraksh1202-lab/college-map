@@ -1,5 +1,0 @@
-User-agent: *
-Allow: /
-Disallow: /saved
-
-Sitemap: https://college-explorer.pages.dev/sitemap-index.xml

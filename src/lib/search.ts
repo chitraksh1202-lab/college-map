@@ -4,19 +4,21 @@ import { curatedAliases } from "@/data/curated/aliases";
 /** Everything search/display needs — satisfied by both `College` and `CollegePreview`. */
 type Searchable = Pick<
   College,
-  "slug" | "name" | "city" | "state" | "stateCode" | "undergraduateEnrollment"
+  "unitId" | "slug" | "name" | "city" | "state" | "stateCode" | "undergraduateEnrollment"
 >;
 
-const aliasBySlug = new Map<string, string[]>();
-const displayNameBySlug = new Map<string, string>();
+// Aliases/display names are curated data keyed by UNITID (the stable
+// identity) — see src/data/curated/aliases.ts for why.
+const aliasByUnitId = new Map<string, string[]>();
+const displayNameByUnitId = new Map<string, string>();
 for (const entry of curatedAliases) {
-  aliasBySlug.set(entry.slug, entry.aliases.map((a) => a.toLowerCase().trim()));
-  if (entry.displayName) displayNameBySlug.set(entry.slug, entry.displayName);
+  aliasByUnitId.set(entry.unitId, entry.aliases.map((a) => a.toLowerCase().trim()));
+  if (entry.displayName) displayNameByUnitId.set(entry.unitId, entry.displayName);
 }
 
 /** Curated friendly name if one exists, otherwise the official Scorecard name. */
-export function getDisplayName(college: Pick<Searchable, "slug" | "name">): string {
-  return displayNameBySlug.get(college.slug) ?? college.name;
+export function getDisplayName(college: Pick<Searchable, "unitId" | "name">): string {
+  return displayNameByUnitId.get(college.unitId) ?? college.name;
 }
 
 function norm(s: string): string {
@@ -45,7 +47,7 @@ const RANK = {
  * priority order (alias/abbreviation match first, state-name match last).
  */
 function rankCollege(college: Searchable, query: string): number {
-  const aliases = aliasBySlug.get(college.slug) ?? [];
+  const aliases = aliasByUnitId.get(college.unitId) ?? [];
   const displayName = norm(getDisplayName(college));
   const officialName = norm(college.name);
   const city = norm(college.city);

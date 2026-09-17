@@ -88,6 +88,15 @@ import { dirname, resolve } from "node:path";
 import readline from "node:readline";
 import AdmZip from "adm-zip";
 import type { College, Ownership } from "../src/lib/types.ts";
+import {
+  slugify,
+  loadRegistry,
+  saveRegistry,
+  loadRedirects,
+  validateRedirects,
+  resolveSlug,
+  type StableSlugRegistry,
+} from "./lib/stable-slugs.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -96,6 +105,9 @@ const ZIP_CACHE_PATH = resolve(RAW_DIR, "college-scorecard-institution.zip");
 const CSV_CACHE_PATH = resolve(RAW_DIR, "Most-Recent-Cohorts-Institution.csv");
 const OUTPUT_PATH = resolve(ROOT, "src/data/generated/colleges.json");
 const REPORT_PATH = resolve(ROOT, "src/data/generated/import-report.txt");
+const REGISTRY_PATH = resolve(ROOT, "src/data/curated/stable-slugs.json");
+const REDIRECTS_PATH = resolve(ROOT, "src/data/curated/slug-redirects.json");
+const REDIRECTS_OUTPUT_PATH = resolve(ROOT, "public/_redirects");
 
 const DATA_PAGE_URL = "https://collegescorecard.ed.gov/data/";
 const ZIP_LINK_PATTERN = /https:\/\/[^\s"'<>]+Most-Recent-Cohorts-Institution[^\s"'<>]*\.zip/i;
@@ -143,14 +155,16 @@ const STATE_NAME_BY_CODE: Record<string, string> = {
 
 // Editorial "featured" flag — a handful of well-known institutions,
 // carried forward from the original prototype dataset. Not an official
-// Scorecard field. Can be overridden per-college via
-// CuratedCollegeData.featured without re-running the importer.
-const FEATURED_SLUGS = new Set([
-  "university-of-california-los-angeles",
-  "university-of-california-berkeley",
-  "stanford-university",
-  "harvard-university",
-  "university-of-michigan",
+// Scorecard field. Keyed by UNITID (not slug/name) since it's an identity
+// flag and identity is UNITID, per the stable-URL architecture below.
+// Can be overridden per-college via CuratedCollegeData.featured without
+// re-running the importer.
+const FEATURED_UNIT_IDS = new Set([
+  "110662", // University of California-Los Angeles
+  "110635", // University of California-Berkeley
+  "243744", // Stanford University
+  "166027", // Harvard University
+  "170976", // University of Michigan-Ann Arbor
 ]);
 
 type Report = {
@@ -171,8 +185,12 @@ type Report = {
   };
   duplicateUnitIds: string[];
   duplicateSlugs: string[];
-  slugCollisionsResolved: number;
   invalidCoordinates: number;
+  existingSlugsReused: number;
+  newSlugsAssigned: number;
+  slugCollisionsEncountered: number;
+  historicalRegistryEntriesNotInCurrentDataset: number;
+  redirectsPreserved: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -274,14 +292,6 @@ export function isEligible(row: RawRow): boolean {
   return true;
 }
 
-export function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/&/g, "and")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
 function mapOwnership(code: number | undefined): Ownership | undefined {
   switch (code) {
     case 1: return "public";
@@ -341,7 +351,7 @@ function normalize(row: RawRow, slug: string): College {
     satAverage: parseNumeric(row.SAT_AVG),
     campusSetting: mapCampusSetting(parseNumeric(row.LOCALE)),
     website: normalizeWebsite(row.INSTURL),
-    featured: FEATURED_SLUGS.has(slug),
+    featured: FEATURED_UNIT_IDS.has(row.UNITID ?? ""),
   };
 }
 
@@ -409,9 +419,16 @@ function formatReport(report: Report): string {
     `Missing coordinates: ${report.missing.coordinates}`,
     "",
     `Duplicate UNITIDs: ${report.duplicateUnitIds.length}${report.duplicateUnitIds.length ? " (" + report.duplicateUnitIds.slice(0, 10).join(", ") + (report.duplicateUnitIds.length > 10 ? ", ..." : "") + ")" : ""}`,
-    `Duplicate slugs (after collision resolution): ${report.duplicateSlugs.length}`,
-    `Slug collisions resolved: ${report.slugCollisionsResolved}`,
+    `Duplicate slugs: ${report.duplicateSlugs.length}`,
     `Invalid coordinates: ${report.invalidCoordinates}`,
+    "",
+    "-- Stable slug registry --",
+    `Existing stable slugs reused: ${report.existingSlugsReused}`,
+    `New slugs assigned: ${report.newSlugsAssigned}`,
+    `Slug collisions encountered: ${report.slugCollisionsEncountered}`,
+    `Historical registry entries not in current dataset: ${report.historicalRegistryEntriesNotInCurrentDataset}`,
+    `Redirects preserved: ${report.redirectsPreserved}`,
+    "",
     `Validation errors: ${report.validationErrors.length}`,
     ...report.validationErrors.slice(0, 20).map((e) => `  - ${e.slug}: ${e.reason}`),
     ...(report.validationErrors.length > 20 ? [`  ... and ${report.validationErrors.length - 20} more`] : []),
@@ -434,8 +451,12 @@ async function main() {
     missing: { admissionRate: 0, sat: 0, netPrice: 0, graduationRate: 0, tuition: 0, coordinates: 0, earnings: 0 },
     duplicateUnitIds: [],
     duplicateSlugs: [],
-    slugCollisionsResolved: 0,
     invalidCoordinates: 0,
+    existingSlugsReused: 0,
+    newSlugsAssigned: 0,
+    slugCollisionsEncountered: 0,
+    historicalRegistryEntriesNotInCurrentDataset: 0,
+    redirectsPreserved: 0,
   };
 
   const csvPath = await ensureCsv();
@@ -469,21 +490,49 @@ async function main() {
   report.passedFilter = eligibleRows.length;
   report.excluded = report.totalRawRows - report.passedFilter;
 
-  // Slugs, with deterministic collision resolution: base name -> +state -> +unitId.
-  const usedSlugs = new Map<string, number>();
+  // --- Stable slug resolution -------------------------------------------
+  // UNITID is the permanent identity; slug is a persisted property of it.
+  // An institution that already has a registry entry ALWAYS keeps that
+  // slug, no matter what its current official name is.
+  const registryBefore = loadRegistry(REGISTRY_PATH);
+  const registrySnapshot: StableSlugRegistry = { ...registryBefore };
+  const registry: StableSlugRegistry = { ...registryBefore };
+  const claimedSlugs = new Set(Object.values(registry));
   const colleges: College[] = [];
 
   for (const row of eligibleRows) {
-    const base = slugify(row.INSTNM ?? "");
-    let slug = base;
-    if (usedSlugs.has(slug)) {
-      slug = `${base}-${(row.STABBR ?? "").toLowerCase()}`;
-      if (usedSlugs.has(slug)) {
-        slug = `${base}-${(row.STABBR ?? "").toLowerCase()}-${row.UNITID}`;
-      }
-      report.slugCollisionsResolved += 1;
+    const unitId = row.UNITID ?? "";
+    const before = registry[unitId];
+    const hadExistingSlug = before !== undefined;
+    const baseSlug = slugify(row.INSTNM ?? "");
+
+    const { slug, isNew } = resolveSlug({
+      unitId,
+      name: row.INSTNM ?? "",
+      city: row.CITY ?? "",
+      stateCode: row.STABBR ?? "",
+      registry,
+      claimedSlugs,
+    });
+
+    // --- Change-detection safeguard: never silently move a public URL ---
+    if (hadExistingSlug && before !== slug) {
+      throw new Error(
+        `ERROR:\nStable slug changed for UNITID ${unitId}\n\nOld:\n${before}\n\nAttempted:\n${slug}\n\n` +
+          "Existing public URLs must not be silently changed. If this change is intentional, " +
+          "edit src/data/curated/stable-slugs.json by hand and add a redirect entry in " +
+          "src/data/curated/slug-redirects.json, then re-run the import."
+      );
     }
-    usedSlugs.set(slug, (usedSlugs.get(slug) ?? 0) + 1);
+
+    if (isNew) {
+      registry[unitId] = slug;
+      claimedSlugs.add(slug);
+      report.newSlugsAssigned += 1;
+      if (slug !== baseSlug) report.slugCollisionsEncountered += 1;
+    } else {
+      report.existingSlugsReused += 1;
+    }
 
     const college = normalize(row, slug);
 
@@ -521,6 +570,38 @@ async function main() {
     process.exitCode = 1;
     return;
   }
+
+  // Historical registry entries (institutions that were assigned a slug in
+  // the past but no longer pass the current eligibility filter) are kept
+  // forever — never deleted, never recycled to a different UNITID.
+  const currentUnitIds = new Set(colleges.map((c) => c.unitId));
+  report.historicalRegistryEntriesNotInCurrentDataset = Object.keys(registry).filter(
+    (unitId) => !currentUnitIds.has(unitId)
+  ).length;
+
+  // Only touch the registry file if it actually changed — keeps output
+  // deterministic and avoids noisy diffs on every run.
+  const registryChanged = JSON.stringify(registry) !== JSON.stringify(registrySnapshot);
+  if (registryChanged) {
+    saveRegistry(REGISTRY_PATH, registry);
+    console.log(`[data:import] Stable slug registry updated (+${report.newSlugsAssigned} new entries).`);
+  }
+
+  // Redirects are curated by hand (e.g. after an intentional slug change),
+  // never auto-generated from thin air — but every run validates them
+  // against the final registry and regenerates the Cloudflare Pages
+  // _redirects file that serves them.
+  const redirects = loadRedirects(REDIRECTS_PATH);
+  const redirectErrors = validateRedirects(redirects, registry);
+  if (redirectErrors.length > 0) {
+    throw new Error(`Invalid slug redirects in src/data/curated/slug-redirects.json:\n` + redirectErrors.map((e) => `  - ${e}`).join("\n"));
+  }
+  report.redirectsPreserved = Object.keys(redirects).length;
+  const redirectsFileContent =
+    Object.entries(redirects)
+      .map(([from, to]) => `/college/${from} /college/${to} 301`)
+      .join("\n") + (Object.keys(redirects).length > 0 ? "\n" : "");
+  writeFileSync(REDIRECTS_OUTPUT_PATH, redirectsFileContent);
 
   mkdirSync(resolve(ROOT, "src/data/generated"), { recursive: true });
   writeFileSync(OUTPUT_PATH, JSON.stringify(colleges, null, 2) + "\n");

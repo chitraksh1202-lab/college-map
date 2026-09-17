@@ -34,19 +34,32 @@ export function getFeaturedColleges(): College[] {
 /**
  * Minimal shape for client-side islands (map markers, search) — the full
  * `College` record has ~20 fields but the map/search UI only ever needs
- * these 9. Passing this instead of the full record measurably shrinks
+ * these 10. Passing this instead of the full record measurably shrinks
  * what gets serialized into island hydration props: the homepage HTML
  * dropped from ~3.4MB to a few hundred KB once both `MapExplorer` and
  * `SearchBox` switched to this shape instead of the full dataset.
+ *
+ * Includes `unitId` (not just `slug`) because saved colleges persist by
+ * UNITID — the stable identity — not by slug, which is only the current
+ * URL for that identity.
  */
 export type CollegePreview = Pick<
   College,
-  "slug" | "name" | "city" | "state" | "stateCode" | "latitude" | "longitude" | "ownership" | "undergraduateEnrollment"
+  | "unitId"
+  | "slug"
+  | "name"
+  | "city"
+  | "state"
+  | "stateCode"
+  | "latitude"
+  | "longitude"
+  | "ownership"
+  | "undergraduateEnrollment"
 >;
 
 function toPreview(college: College): CollegePreview {
-  const { slug, name, city, state, stateCode, latitude, longitude, ownership, undergraduateEnrollment } = college;
-  return { slug, name, city, state, stateCode, latitude, longitude, ownership, undergraduateEnrollment };
+  const { unitId, slug, name, city, state, stateCode, latitude, longitude, ownership, undergraduateEnrollment } = college;
+  return { unitId, slug, name, city, state, stateCode, latitude, longitude, ownership, undergraduateEnrollment };
 }
 
 export function getAllCollegePreviews(): CollegePreview[] {

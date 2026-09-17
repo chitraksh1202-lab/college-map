@@ -1,12 +1,13 @@
 import { useSavedCollege } from "@/lib/useSavedCollege";
 
 type Props = {
-  slug: string;
+  /** UNITID — the stable identity saves persist against, not the (mutable) slug. */
+  unitId: string;
   className?: string;
 };
 
-export default function SaveButton({ slug, className }: Props) {
-  const { saved, toggle } = useSavedCollege(slug);
+export default function SaveButton({ unitId, className }: Props) {
+  const { saved, toggle } = useSavedCollege(unitId);
 
   return (
     <button

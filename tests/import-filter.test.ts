@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { isEligible, slugify, parseNumeric, type RawRow } from "../scripts/import-college-scorecard.ts";
+import { isEligible, parseNumeric, type RawRow } from "../scripts/import-college-scorecard.ts";
+import { slugify } from "../scripts/lib/stable-slugs.ts";
 
 const BASE: RawRow = {
   UNITID: "999999", INSTNM: "Test University", CITY: "Testville", STABBR: "CA",

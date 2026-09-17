@@ -1,6 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CollegePreview } from "@/lib/colleges";
-import { getSavedSlugs, SAVED_COLLEGES_EVENT, unsaveCollege } from "@/lib/saved-colleges";
+import {
+  getSavedUnitIds,
+  migrateLegacySavedSlugs,
+  SAVED_COLLEGES_EVENT,
+  unsaveCollege,
+} from "@/lib/saved-colleges";
 import { getDisplayName } from "@/lib/search";
 import { formatOwnership } from "@/lib/format";
 
@@ -10,10 +15,17 @@ type Props = {
 };
 
 export default function SavedCollegesList({ colleges }: Props) {
-  const [slugs, setSlugs] = useState<string[] | null>(null);
+  const [unitIds, setUnitIds] = useState<string[] | null>(null);
+
+  const slugToUnitId = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const c of colleges) map[c.slug] = c.unitId;
+    return map;
+  }, [colleges]);
 
   useEffect(() => {
-    const sync = () => setSlugs(getSavedSlugs());
+    migrateLegacySavedSlugs(slugToUnitId);
+    const sync = () => setUnitIds(getSavedUnitIds());
     sync();
     window.addEventListener(SAVED_COLLEGES_EVENT, sync);
     window.addEventListener("storage", sync);
@@ -21,13 +33,13 @@ export default function SavedCollegesList({ colleges }: Props) {
       window.removeEventListener(SAVED_COLLEGES_EVENT, sync);
       window.removeEventListener("storage", sync);
     };
-  }, []);
+  }, [slugToUnitId]);
 
-  if (slugs === null) {
+  if (unitIds === null) {
     return <p className="text-slate-400">Loading…</p>;
   }
 
-  const saved = colleges.filter((c) => slugs.includes(c.slug));
+  const saved = colleges.filter((c) => unitIds.includes(c.unitId));
 
   if (saved.length === 0) {
     return (
@@ -47,7 +59,7 @@ export default function SavedCollegesList({ colleges }: Props) {
     <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {saved.map((college) => (
         <li
-          key={college.slug}
+          key={college.unitId}
           className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition hover:shadow-md"
         >
           <a href={`/college/${college.slug}`} className="block">
@@ -58,7 +70,7 @@ export default function SavedCollegesList({ colleges }: Props) {
           </a>
           <button
             type="button"
-            onClick={() => setSlugs(unsaveCollege(college.slug))}
+            onClick={() => setUnitIds(unsaveCollege(college.unitId))}
             className="mt-3 text-xs font-medium text-slate-400 hover:text-sunset-600"
           >
             Remove

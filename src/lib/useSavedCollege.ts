@@ -1,25 +1,25 @@
 import { useCallback, useEffect, useState } from "react";
 import { isCollegeSaved, toggleSavedCollege, SAVED_COLLEGES_EVENT } from "@/lib/saved-colleges";
 
-/** Tracks saved state for a single college slug and stays in sync across components/tabs. */
-export function useSavedCollege(slug: string) {
+/** Tracks saved state for a single college (by UNITID) and stays in sync across components/tabs. */
+export function useSavedCollege(unitId: string) {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    setSaved(isCollegeSaved(slug));
-    const sync = () => setSaved(isCollegeSaved(slug));
+    setSaved(isCollegeSaved(unitId));
+    const sync = () => setSaved(isCollegeSaved(unitId));
     window.addEventListener(SAVED_COLLEGES_EVENT, sync);
     window.addEventListener("storage", sync);
     return () => {
       window.removeEventListener(SAVED_COLLEGES_EVENT, sync);
       window.removeEventListener("storage", sync);
     };
-  }, [slug]);
+  }, [unitId]);
 
   const toggle = useCallback(() => {
-    const result = toggleSavedCollege(slug);
+    const result = toggleSavedCollege(unitId);
     setSaved(result.saved);
-  }, [slug]);
+  }, [unitId]);
 
   return { saved, toggle };
 }
