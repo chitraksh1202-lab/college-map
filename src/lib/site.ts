@@ -7,7 +7,7 @@
  * No domain has been purchased/configured yet (deliberately out of scope
  * for this task) — this is a placeholder.
  */
-export const SITE_URL = "https://college-explorer.pages.dev";
+export const SITE_URL = "https://college-map.chitraksh1202.workers.dev";
 
 /**
  * Product name has not been finalized. Every place that displays it
