@@ -44,7 +44,21 @@ function main() {
   }
 
   const us = readJson<College[]>(US_PATH);
-  const global = readJson<College[]>(GLOBAL_PATH);
+  const allGlobal = readJson<College[]>(GLOBAL_PATH);
+
+  // Cloudflare's free plan caps a deployment at 20,000 static files and every
+  // institution is one prerendered page. Keep a deterministic per-country
+  // sample (first N by unitId) so worldwide coverage survives. The full
+  // source remains in global-institutions.json; raise the cap on a paid plan.
+  const MAX_GLOBAL_PER_COUNTRY = 600;
+  const perCountry = new Map<string, number>();
+  const global = [...allGlobal]
+    .sort((a, b) => a.unitId.localeCompare(b.unitId))
+    .filter((c) => {
+      const n = (perCountry.get(c.countryCode ?? "") ?? 0) + 1;
+      perCountry.set(c.countryCode ?? "", n);
+      return n <= MAX_GLOBAL_PER_COUNTRY;
+    });
   const merged = [...us, ...global];
 
   // Defensive: the two sources use disjoint unitId formats by construction
