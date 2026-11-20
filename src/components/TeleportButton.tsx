@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { getTeleportHistory, recordTeleport } from "@/lib/teleport-history";
+import { loadAllSlugs } from "@/lib/client-data";
+import { track } from "@/lib/analytics";
 
 type Props = {
-  /** All college slugs to pick from — pass slugs only, never full records, to keep this island's bundle tiny. */
-  allSlugs: string[];
   currentSlug?: string;
   className?: string;
   label?: string;
@@ -16,16 +16,29 @@ function pickRandom(allSlugs: string[], exclude: string[]): string {
   return candidates[Math.floor(Math.random() * candidates.length)];
 }
 
-export default function TeleportButton({ allSlugs, currentSlug, className, label = "Surprise me" }: Props) {
+/**
+ * Picks a random institution from the FULL worldwide dataset (not just
+ * whatever page it's rendered on) — fetched lazily on click from
+ * public/data/slugs.json rather than passed in as a prop, since that list
+ * is now ~24k entries (US + global) and would otherwise be embedded in
+ * every single page's HTML.
+ */
+export default function TeleportButton({ currentSlug, className, label = "Surprise me" }: Props) {
   const [isNavigating, setIsNavigating] = useState(false);
 
-  function teleport() {
+  async function teleport() {
     setIsNavigating(true);
-    const recent = getTeleportHistory();
-    const exclude = currentSlug ? [...recent, currentSlug] : recent;
-    const destinationSlug = pickRandom(allSlugs, exclude);
-    recordTeleport(destinationSlug);
-    window.location.href = `/college/${destinationSlug}`;
+    try {
+      const allSlugs = await loadAllSlugs();
+      const recent = getTeleportHistory();
+      const exclude = currentSlug ? [...recent, currentSlug] : recent;
+      const destinationSlug = pickRandom(allSlugs, exclude);
+      recordTeleport(destinationSlug);
+      track("surprise_me_used", { from: currentSlug ?? "home", to: destinationSlug });
+      window.location.href = `/college/${destinationSlug}`;
+    } catch {
+      setIsNavigating(false);
+    }
   }
 
   return (

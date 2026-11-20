@@ -23,14 +23,35 @@ function isActive(path: string) {
         Explore
       </a>
       <a
-        href="/saved"
+        href="/atlas"
         class:list={[
           "rounded-full px-3.5 py-1.5 transition-colors",
-          isActive("/saved") ? "bg-ink-900 text-sand-50" : "hover:bg-stone-200/60 hover:text-ink-900",
+          isActive("/atlas") ? "bg-ink-900 text-sand-50" : "hover:bg-stone-200/60 hover:text-ink-900",
         ]}
       >
-        Saved
+        My Atlas<span id="atlas-nav-count" class="ml-1 text-ink-500/70"></span>
       </a>
     </nav>
   </div>
 </header>
+
+<script>
+  // Progressive enhancement only — the nav link works with zero JS.
+  // Shows a subtle "· N" count next to "My Atlas" once we know how many
+  // colleges are saved (localStorage is client-only, so this can't be
+  // rendered server-side). Same event contract as the rest of the save
+  // system — see src/lib/saved-colleges.ts.
+  import { getSavedUnitIds, SAVED_COLLEGES_EVENT } from "@/lib/saved-colleges";
+
+  const countEl = document.getElementById("atlas-nav-count");
+
+  function renderCount() {
+    if (!countEl) return;
+    const count = getSavedUnitIds().length;
+    countEl.textContent = count > 0 ? ` · ${count}` : "";
+  }
+
+  renderCount();
+  window.addEventListener(SAVED_COLLEGES_EVENT, renderCount);
+  window.addEventListener("storage", renderCount);
+</script>

@@ -45,6 +45,35 @@ describe("searchColleges ranking against the real national dataset", () => {
   it("respects the limit parameter", () => {
     expect(searchColleges(colleges, "university", 3)).toHaveLength(3);
   });
+
+  it("'university of oxford' -> University of Oxford (global/ROR institution, exact name match)", () => {
+    expect(topSlug("university of oxford")).toBe("university-of-oxford");
+  });
+  it("eth zurich -> ETH Zurich (global institution, unambiguous name match)", () => {
+    expect(topSlug("eth zurich")).toBe("eth-zurich");
+  });
+  it("'national university of singapore' -> NUS by exact name, not by ambiguous bare acronym", () => {
+    expect(topSlug("national university of singapore")).toBe("national-university-of-singapore");
+  });
+  it("'university of toronto' -> University of Toronto (exact name, not the many other Toronto-named institutions)", () => {
+    expect(topSlug("university of toronto")).toBe("university-of-toronto");
+  });
+
+  it(
+    "known limitation: a bare acronym shared by multiple global institutions (e.g. 'nus') resolves " +
+      "deterministically (alphabetically among the tied exact-alias matches) rather than crashing or " +
+      "being random — un-curated global aliases can collide, unlike the hand-checked US alias list",
+    () => {
+      const results = searchColleges(colleges, "nus", 10);
+      expect(results.length).toBeGreaterThan(0);
+      // Every top-tier result really does have "nus" as an exact alias/acronym.
+      for (const r of results.slice(0, 3)) {
+        expect(r.aliases ?? []).toContain("nus");
+      }
+      // Deterministic: re-running the identical search yields the identical order.
+      expect(searchColleges(colleges, "nus", 10).map((r) => r.slug)).toEqual(results.map((r) => r.slug));
+    }
+  );
 });
 
 describe("getDisplayName", () => {

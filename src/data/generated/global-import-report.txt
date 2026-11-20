@@ -1,0 +1,44 @@
+Global (ROR) institution import complete
+
+-- Eligibility funnel --
+Raw organizations in dump: 137398
+Active + typed "education": 27055
++ valid country/coordinates: 27055
++ non-US: 22631
++ not K-12 (denylist): 22357
++ has website (content-quality gate): 21974
+Final included global institutions: 21974
+
+-- By continent --
+  Asia: 11329
+  Europe: 5749
+  Africa: 1819
+  South America: 1450
+  North America: 1407
+  Oceania: 220
+
+-- Top 20 countries --
+  Indonesia: 2155
+  India: 2093
+  Japan: 1294
+  China: 1207
+  Russia: 814
+  Malaysia: 658
+  Mexico: 648
+  Germany: 619
+  United Kingdom: 581
+  Brazil: 568
+  France: 499
+  Portugal: 397
+  Canada: 394
+  South Korea: 372
+  Iran: 355
+  Nigeria: 321
+  Poland: 320
+  Ukraine: 298
+  Philippines: 292
+  Pakistan: 262
+
+-- Stable slug registry --
+Existing slugs reused: 0
+New slugs assigned: 21974

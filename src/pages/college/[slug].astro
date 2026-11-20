@@ -7,9 +7,10 @@ import SectionHeading from "@/components/SectionHeading.astro";
 import NearbyColleges from "@/components/NearbyColleges.astro";
 import SaveButton from "@/components/SaveButton.tsx";
 import TeleportButton from "@/components/TeleportButton.tsx";
-import { getAllColleges, getCollegeBySlug, getAllSlugs } from "@/lib/colleges";
+import { getAllColleges, getCollegeBySlug } from "@/lib/colleges";
 import { getCuratedDataByUnitId } from "@/data/curated";
 import { getDisplayName } from "@/lib/search";
+import { countrySlugFor } from "@/lib/geo";
 import { BRAND_NAME } from "@/lib/site";
 import {
   formatNumber,
@@ -30,14 +31,28 @@ if (!college) {
   return Astro.redirect("/404");
 }
 
+const isUS = college.source === "scorecard";
 const curated = getCuratedDataByUnitId(college.unitId);
-const allSlugs = getAllSlugs();
 const campusSetting = curated?.campusSettingOverride ?? college.campusSetting;
 const displayName = getDisplayName(college);
-const stateSlug = college.state.toLowerCase().replace(/\s+/g, "-");
 
-const pageTitle = `${displayName} — Campus, Costs & Admissions | ${BRAND_NAME}`;
-const pageDescription = `${displayName} in ${college.city}, ${college.state}: campus map, Street View, enrollment, admission rate, tuition, and nearby colleges to explore.`;
+// US: back-link goes to the state page. Global: back-link goes to the
+// country page (Phase 12). Both use the same slug convention.
+const backHref = isUS
+  ? `/state/${(college.state ?? "").toLowerCase().replace(/\s+/g, "-")}`
+  : `/country/${countrySlugFor(college.countryName)}`;
+const backLabel = isUS ? `← ${college.state}` : `← ${college.countryName}`;
+const watermark = isUS ? college.stateCode : college.countryCode;
+const locationLine = isUS
+  ? `${college.city}, ${college.state}`
+  : [college.city, college.state, college.countryName].filter(Boolean).join(", ");
+
+const pageTitle = isUS
+  ? `${displayName} — Campus, Costs & Admissions | ${BRAND_NAME}`
+  : `${displayName} — ${college.city}, ${college.countryName} | ${BRAND_NAME}`;
+const pageDescription = isUS
+  ? `${displayName} in ${college.city}, ${college.state}: campus map, Street View, enrollment, admission rate, tuition, and nearby colleges to explore.`
+  : `${displayName} in ${college.city}, ${college.countryName}: location, campus map, and nearby universities to explore.`;
 
 const structuredData = {
   "@context": "https://schema.org",
@@ -46,8 +61,8 @@ const structuredData = {
   address: {
     "@type": "PostalAddress",
     addressLocality: college.city,
-    addressRegion: college.stateCode,
-    addressCountry: "US",
+    ...(college.stateCode ? { addressRegion: college.stateCode } : {}),
+    addressCountry: college.countryCode,
   },
   geo: {
     "@type": "GeoCoordinates",
@@ -57,30 +72,32 @@ const structuredData = {
   ...(college.website ? { url: college.website } : {}),
 };
 
-const secondaryFacts: { label: string; value: string; hint?: string; href?: string }[] = [
-  { label: "In-state tuition", value: formatCurrency(college.tuitionInState) },
-  { label: "Out-of-state tuition", value: formatCurrency(college.tuitionOutOfState) },
-  ...(college.graduationRate !== undefined
-    ? [{
-        label: "Graduation rate",
-        value: formatPercent(college.graduationRate),
-        hint: "Share of first-time, full-time students completing a bachelor's degree within 150% of normal time (Scorecard field C150_4).",
-      }]
-    : []),
-  ...(college.satAverage !== undefined
-    ? [{ label: "SAT average", value: formatNumber(college.satAverage) }]
-    : []),
-  ...(college.medianEarnings !== undefined
-    ? [{
-        label: "Median earnings",
-        value: formatCurrency(college.medianEarnings),
-        hint: "Median earnings of former students working and not enrolled, 10 years after entry (Scorecard field MD_EARN_WNE_P10).",
-      }]
-    : []),
-  ...(college.website
-    ? [{ label: "Website", value: formatOrFallback(college.website), href: college.website }]
-    : []),
-];
+const secondaryFacts: { label: string; value: string; hint?: string; href?: string }[] = isUS
+  ? [
+      { label: "In-state tuition", value: formatCurrency(college.tuitionInState) },
+      { label: "Out-of-state tuition", value: formatCurrency(college.tuitionOutOfState) },
+      ...(college.graduationRate !== undefined
+        ? [{
+            label: "Graduation rate",
+            value: formatPercent(college.graduationRate),
+            hint: "Share of first-time, full-time students completing a bachelor's degree within 150% of normal time (Scorecard field C150_4).",
+          }]
+        : []),
+      ...(college.satAverage !== undefined
+        ? [{ label: "SAT average", value: formatNumber(college.satAverage) }]
+        : []),
+      ...(college.medianEarnings !== undefined
+        ? [{
+            label: "Median earnings",
+            value: formatCurrency(college.medianEarnings),
+            hint: "Median earnings of former students working and not enrolled, 10 years after entry (Scorecard field MD_EARN_WNE_P10).",
+          }]
+        : []),
+      ...(college.website
+        ? [{ label: "Website", value: formatOrFallback(college.website), href: college.website }]
+        : []),
+    ]
+  : [];
 ---
 
 <BaseLayout title={pageTitle} description={pageDescription} structuredData={structuredData}>
@@ -89,11 +106,11 @@ const secondaryFacts: { label: string; value: string; hint?: string; href?: stri
       aria-hidden="true"
       class="pointer-events-none absolute -right-4 -top-8 select-none whitespace-nowrap font-display text-[7rem] font-semibold leading-none text-white/[0.06] md:-top-10 md:text-[11rem]"
     >
-      {college.stateCode}
+      {watermark}
     </p>
     <div class="relative mx-auto max-w-5xl px-4 pt-7 pb-9 md:px-8 md:pt-12 md:pb-12">
       <p class="text-sm font-medium text-sand-50/70">
-        <a href={`/state/${stateSlug}`} class="hover:text-sand-50 hover:underline">← {college.state}</a>
+        <a href={backHref} class="hover:text-sand-50 hover:underline">{backLabel}</a>
       </p>
 
       <div class="mt-3 flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
@@ -102,7 +119,8 @@ const secondaryFacts: { label: string; value: string; hint?: string; href?: stri
             {displayName}
           </h1>
           <p class="mt-3 text-sand-50/75">
-            {college.city}, {college.state} · {formatOwnership(college.ownership)}
+            {locationLine}
+            {isUS && ` · ${formatOwnership(college.ownership)}`}
             {campusSetting && <span class="capitalize"> · {campusSetting}</span>}
           </p>
         </div>
@@ -115,6 +133,8 @@ const secondaryFacts: { label: string; value: string; hint?: string; href?: stri
           />
           <a
             href="#explore-campus-heading"
+            data-track="campus_explore_opened"
+            data-track-slug={college.slug}
             class="inline-flex items-center gap-2 rounded-full bg-ember-500 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-ember-600 active:scale-95"
           >
             Explore Campus
@@ -124,35 +144,57 @@ const secondaryFacts: { label: string; value: string; hint?: string; href?: stri
     </div>
   </section>
 
-  <section class="mx-auto max-w-5xl px-4 pb-10 pt-9 md:px-8">
-    <SectionHeading title="At a glance" />
-    <dl class="grid grid-cols-2 gap-6 sm:grid-cols-3">
-      <Metric variant="big" label="Undergrad enrollment" value={formatNumber(college.undergraduateEnrollment)} />
-      <Metric
-        variant="big"
-        label="Admission rate"
-        value={formatPercent(college.admissionRate)}
-        hint="Share of applicants admitted, as reported to College Scorecard."
-      />
-      <Metric
-        variant="big"
-        label="Average net price"
-        value={formatCurrency(college.averageNetPrice)}
-        hint="What students actually pay on average after grants/scholarships — not the sticker tuition price."
-      />
-    </dl>
+  {
+    isUS ? (
+      <section class="mx-auto max-w-5xl px-4 pb-10 pt-9 md:px-8">
+        <SectionHeading title="At a glance" />
+        <dl class="grid grid-cols-2 gap-6 sm:grid-cols-3">
+          <Metric variant="big" label="Undergrad enrollment" value={formatNumber(college.undergraduateEnrollment)} />
+          <Metric
+            variant="big"
+            label="Admission rate"
+            value={formatPercent(college.admissionRate)}
+            hint="Share of applicants admitted, as reported to College Scorecard."
+          />
+          <Metric
+            variant="big"
+            label="Average net price"
+            value={formatCurrency(college.averageNetPrice)}
+            hint="What students actually pay on average after grants/scholarships — not the sticker tuition price."
+          />
+        </dl>
 
-    <dl class="mt-2 divide-y divide-stone-200 border-t border-stone-200">
-      {secondaryFacts.map((fact) => (
-        <Metric label={fact.label} value={fact.value} hint={fact.hint} href={fact.href} />
-      ))}
-    </dl>
+        <dl class="mt-2 divide-y divide-stone-200 border-t border-stone-200">
+          {secondaryFacts.map((fact) => (
+            <Metric label={fact.label} value={fact.value} hint={fact.hint} href={fact.href} />
+          ))}
+        </dl>
 
-    <p class="mt-4 text-xs text-ink-500/80">
-      Data from the US Dept of Education College Scorecard.{" "}
-      <a href="/data-sources" class="underline hover:text-ink-800">How to read this data</a>
-    </p>
-  </section>
+        <p class="mt-4 text-xs text-ink-500/80">
+          Data from the US Dept of Education College Scorecard.{" "}
+          <a href="/data-sources" class="underline hover:text-ink-800">How to read this data</a>
+        </p>
+      </section>
+    ) : (
+      <section class="mx-auto max-w-5xl px-4 pb-10 pt-9 md:px-8">
+        <SectionHeading title="At a glance" />
+        <dl class="divide-y divide-stone-200 border-t border-stone-200">
+          <Metric label="City" value={college.city} />
+          <Metric label="Country" value={college.countryName} />
+          {college.state && <Metric label="Region" value={college.state} />}
+          <Metric label="Institution type" value={college.institutionType ?? "Higher education institution"} />
+          {college.website && (
+            <Metric label="Website" value={formatOrFallback(college.website)} href={college.website} />
+          )}
+        </dl>
+        <p class="mt-4 max-w-xl text-sm text-ink-500">
+          More verified data for this institution is not yet available in our dataset. We only show
+          facts we can source officially — see{" "}
+          <a href="/data-sources" class="underline hover:text-ink-800">where our data comes from</a>.
+        </p>
+      </section>
+    )
+  }
 
   <section class="mx-auto max-w-5xl px-4 pb-10 md:px-8">
     <SectionHeading title="Campus location" />
@@ -172,7 +214,13 @@ const secondaryFacts: { label: string; value: string; hint?: string; href?: stri
 
   <section class="mx-auto max-w-5xl px-4 pb-16 md:px-8">
     <div class="flex justify-center border-t border-stone-200 pt-10">
-      <TeleportButton client:load allSlugs={allSlugs} currentSlug={college.slug} />
+      <TeleportButton client:load currentSlug={college.slug} />
     </div>
   </section>
 </BaseLayout>
+
+<script>
+  import { track } from "@/lib/analytics";
+  const slug = window.location.pathname.replace(/^\/college\//, "").replace(/\/$/, "");
+  if (slug) track("college_opened", { slug });
+</script>

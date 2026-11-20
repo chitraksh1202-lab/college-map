@@ -4,15 +4,24 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import type { CollegePreview } from "@/lib/colleges";
 import { formatOwnership, formatNumber } from "@/lib/format";
 import { getDisplayName } from "@/lib/search";
+import { loadInstitutionPreviews } from "@/lib/client-data";
+import { track } from "@/lib/analytics";
 import SaveButton from "@/components/SaveButton";
 
 type Props = {
-  colleges: CollegePreview[];
+  /** Page-scoped list (a state's, a country's, or a single college's own map) — small enough to embed directly. */
+  colleges?: CollegePreview[];
   /**
-   * National (homepage) mode: opens on the continental US regardless of
-   * outlying institutions, and shows Alaska / Hawaii / Reset shortcuts.
+   * Set on the homepage instead of `colleges`: fetches the full worldwide
+   * dataset lazily instead of embedding ~24k institutions in the page.
    */
-  national?: boolean;
+  dataUrl?: boolean;
+  /**
+   * World exploration mode (homepage): opens on a world view, shows the
+   * World/US/Europe/Asia region pills, custom zoom/reset controls, and the
+   * "N universities · N countries" info chip.
+   */
+  world?: boolean;
 };
 
 type Bounds = [[number, number], [number, number]];
@@ -27,17 +36,21 @@ type Bounds = [[number, number], [number, number]];
  */
 const DEV_MAP_STYLE = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
 
+const WORLD_BOUNDS: Bounds = [
+  [-175, -56],
+  [178, 75],
+];
 const CONUS_BOUNDS: Bounds = [
   [-125.5, 24.2],
   [-66.5, 49.6],
 ];
-const ALASKA_BOUNDS: Bounds = [
-  [-170, 52],
-  [-130, 71.5],
+const EUROPE_BOUNDS: Bounds = [
+  [-25, 34],
+  [45, 71],
 ];
-const HAWAII_BOUNDS: Bounds = [
-  [-160.5, 18.7],
-  [-154.5, 22.4],
+const ASIA_BOUNDS: Bounds = [
+  [26, -11],
+  [150, 55],
 ];
 const MOBILE_US_VIEW = { center: [-97, 40.5] as [number, number], zoom: 2.7 };
 
@@ -46,16 +59,43 @@ const SAND = "#fdfbf7";
 const EMBER = "#d8602a";
 const EMBER_DEEP = "#b84a1c";
 
-const REGIONS: { id: "us" | "alaska" | "hawaii"; label: string; bounds: Bounds }[] = [
-  { id: "us", label: "Mainland US", bounds: CONUS_BOUNDS },
-  { id: "alaska", label: "Alaska", bounds: ALASKA_BOUNDS },
-  { id: "hawaii", label: "Hawaii", bounds: HAWAII_BOUNDS },
+/**
+ * "Place Lens" — explore by the kind of life around a campus, not by
+ * admissions stats. Deliberately built ONLY from a classification we
+ * already derive honestly at import time: NCES's own urban-centric
+ * locale codes, bucketed into `campusSetting` in
+ * scripts/import-college-scorecard.ts (mapCampusSetting). No new data,
+ * no invented per-college judgment calls.
+ *
+ * "Coast", "Mountains", and "Warm/Cold" were considered and deliberately
+ * left out — there is no coastline/elevation/climate dataset in this
+ * project, and approximating them from state alone would be inaccurate
+ * (e.g. most of Texas isn't coastal) and effectively invented.
+ *
+ * Only US institutions currently have `campusSetting` (ROR doesn't
+ * publish an equivalent), so a lens narrows the map to US colleges for
+ * now — an honest reflection of "US = deeper data" rather than a bug.
+ */
+type PlaceLensId = "big-city" | "college-town" | "small-town";
+const PLACE_LENSES: { id: PlaceLensId; label: string; setting: string }[] = [
+  { id: "big-city", label: "Big City", setting: "urban" },
+  { id: "college-town", label: "College Town", setting: "college-town" },
+  { id: "small-town", label: "Small Town", setting: "rural" },
+];
+
+type RegionId = "world" | "us" | "europe" | "asia";
+const REGIONS: { id: RegionId; label: string; bounds: Bounds }[] = [
+  { id: "world", label: "World", bounds: WORLD_BOUNDS },
+  { id: "us", label: "US", bounds: CONUS_BOUNDS },
+  { id: "europe", label: "Europe", bounds: EUROPE_BOUNDS },
+  { id: "asia", label: "Asia", bounds: ASIA_BOUNDS },
 ];
 
 /**
- * Bounding box around the given colleges (state pages), with a small
- * margin. Points far outside the American longitude band (currently one
- * Guam institution) are excluded from the FIT only — they still render.
+ * Bounding box around the given colleges (state/country pages), with a
+ * small margin. Points far outside the American longitude band (e.g. a
+ * lone Guam or Pacific-territory institution) are excluded from the FIT
+ * only — they still render as markers.
  */
 function boundsFor(colleges: CollegePreview[]): Bounds {
   const framable = colleges.filter((c) => c.longitude >= -180 && c.longitude <= -60);
@@ -114,17 +154,17 @@ function restyleBasemap(map: maplibregl.Map) {
   }
   paint("landuse_residential", "fill-color", "#e8dcc5");
 
-  // Boundaries: states readable from the national view, counties only up close
+  // Boundaries: states/countries readable from the national view, counties only up close
   zoomRange("boundary_state", 2, 24);
   paint("boundary_state", "line-color", "#a08c6c");
   paint("boundary_state", "line-width", ["interpolate", ["linear"], ["zoom"], 3, 0.7, 6, 1.1, 10, 1.5]);
   paint("boundary_state", "line-opacity", 0.75);
   paint("boundary_country_inner", "line-color", "#85704f");
-  paint("boundary_country_inner", "line-width", ["interpolate", ["linear"], ["zoom"], 3, 1, 8, 1.6]);
+  paint("boundary_country_inner", "line-width", ["interpolate", ["linear"], ["zoom"], 1, 0.6, 3, 1, 8, 1.6]);
   paint("boundary_country_outline", "line-color", "#e6dcc8");
   layout("boundary_county", "visibility", "none");
 
-  // Labels: state names visible from the national view, quiet and warm
+  // Labels: state/country names visible from the national/world view, quiet and warm
   zoomRange("place_state", 3.2, 10);
   layout("place_state", "text-size", ["interpolate", ["linear"], ["zoom"], 3.2, 9.5, 5, 11.5, 7, 14]);
   layout("place_state", "text-letter-spacing", 0.12);
@@ -145,7 +185,17 @@ function restyleBasemap(map: maplibregl.Map) {
     paint(id, "text-color", "#7d97a3");
     paint(id, "text-halo-color", "#f2eadb");
   }
-  for (const id of ["place_country_1", "place_country_2", "place_continent", "poi_stadium", "poi_park", "housenumber"]) {
+  // World-level country labels ARE useful at world zoom (unlike national
+  // mode, where they were noise) — shown quietly, hidden once state/city
+  // labels take over.
+  zoomRange("place_country_1", 1, 5);
+  zoomRange("place_country_2", 1, 5);
+  for (const id of ["place_country_1", "place_country_2"]) {
+    paint(id, "text-color", "#6f5f47");
+    paint(id, "text-halo-color", "#efe4cf");
+    paint(id, "text-halo-width", 1.2);
+  }
+  for (const id of ["place_continent", "poi_stadium", "poi_park", "housenumber"]) {
     hide(id);
   }
 
@@ -169,36 +219,75 @@ function restyleBasemap(map: maplibregl.Map) {
   paint("building-top", "fill-outline-color", "#dccfb8");
 }
 
-export default function MapExplorer({ colleges, national = false }: Props) {
+export default function MapExplorer({ colleges, dataUrl = false, world = false }: Props) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  const mapLoadedRef = useRef(false);
+  const hasFitInitialRef = useRef(false);
   const [selected, setSelected] = useState<CollegePreview | null>(null);
-  const [region, setRegion] = useState<"us" | "alaska" | "hawaii">("us");
+  const [region, setRegion] = useState<RegionId>("world");
+  const [fetchedColleges, setFetchedColleges] = useState<CollegePreview[] | null>(null);
+
+  useEffect(() => {
+    if (!dataUrl) return;
+    let cancelled = false;
+    loadInstitutionPreviews()
+      .then((data) => {
+        if (!cancelled) setFetchedColleges(data);
+      })
+      .catch(() => {
+        // Map degrades to "no points yet" rather than crashing — search
+        // and direct college/state/country URLs still work.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dataUrl]);
+
+  const [activeLens, setActiveLens] = useState<PlaceLensId | null>(null);
+  const rawPool = colleges ?? fetchedColleges ?? [];
+  const activeLensSetting = activeLens ? PLACE_LENSES.find((l) => l.id === activeLens)?.setting : undefined;
+  const pool = useMemo(
+    () => (activeLensSetting ? rawPool.filter((c) => c.campusSetting === activeLensSetting) : rawPool),
+    [rawPool, activeLensSetting]
+  );
   const collegesBySlug = useMemo(() => {
     const map = new Map<string, CollegePreview>();
-    for (const college of colleges) map.set(college.slug, college);
+    for (const college of pool) map.set(college.slug, college);
     return map;
-  }, [colleges]);
-  const stateCount = useMemo(() => new Set(colleges.map((c) => c.stateCode)).size, [colleges]);
+  }, [pool]);
+  const countryCount = useMemo(() => new Set(pool.map((c) => c.countryCode)).size, [pool]);
 
+  // --- Map creation: runs once. Does not depend on data being loaded yet,
+  // so the map/basemap render immediately even while `dataUrl` is fetching. ---
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
-    const single = colleges.length === 1;
     const narrow = mapContainerRef.current.clientWidth < 640;
-    const initialBounds = national ? CONUS_BOUNDS : colleges.length > 0 ? boundsFor(colleges) : CONUS_BOUNDS;
+    // `colleges` (as opposed to `dataUrl`) means the exact points are known
+    // synchronously — a state/country page or a college's own location map
+    // — so frame them immediately at construction time, with no flash of a
+    // wrong default view before the async data-apply effect can correct it.
+    const knownUpfront = colleges ?? [];
+    const single = knownUpfront.length === 1;
+    let initialView: Partial<maplibregl.MapOptions>;
+    if (single) {
+      initialView = { center: [knownUpfront[0].longitude, knownUpfront[0].latitude], zoom: 13 };
+    } else if (knownUpfront.length > 0) {
+      initialView = { bounds: boundsFor(knownUpfront), fitBoundsOptions: { padding: 40 } };
+    } else if (world && narrow) {
+      initialView = { center: MOBILE_US_VIEW.center, zoom: 1.4 };
+    } else {
+      initialView = { bounds: world ? WORLD_BOUNDS : CONUS_BOUNDS, fitBoundsOptions: { padding: world ? 16 : 40 } };
+    }
+    if (knownUpfront.length > 0) hasFitInitialRef.current = true;
+
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
       style: DEV_MAP_STYLE,
-      ...(single
-        ? { center: [colleges[0].longitude, colleges[0].latitude] as [number, number], zoom: 13 }
-        : national && narrow
-          ? // A tall phone viewport can't fit the mainland's width without
-            // zooming out to the whole hemisphere; centre on it instead.
-            { center: MOBILE_US_VIEW.center, zoom: MOBILE_US_VIEW.zoom }
-          : { bounds: initialBounds, fitBoundsOptions: { padding: national ? 24 : 40 } }),
+      ...initialView,
       attributionControl: { compact: true },
-      minZoom: 2.2,
+      minZoom: world ? 1.2 : 2.2,
     });
     mapRef.current = map;
 
@@ -207,7 +296,7 @@ export default function MapExplorer({ colleges, national = false }: Props) {
 
       map.addSource("colleges", {
         type: "geojson",
-        data: collegesToGeoJSON(colleges),
+        data: { type: "FeatureCollection", features: [] },
         cluster: true,
         clusterRadius: 64,
         clusterMaxZoom: 12,
@@ -226,16 +315,18 @@ export default function MapExplorer({ colleges, national = false }: Props) {
         (base + 8) * k,
         100,
         (base + 13) * k,
-        250,
-        (base + 19) * k,
+        500,
+        (base + 20) * k,
+        2000,
+        (base + 28) * k,
       ];
       // Zoom must be the outer expression for MapLibre's paint validator.
       const clusterRadius = (base: number): maplibregl.ExpressionSpecification => [
         "interpolate",
         ["linear"],
         ["zoom"],
-        3,
-        byCount(base, 1),
+        1.5,
+        byCount(base, 0.85),
         7,
         byCount(base, 1.25),
       ];
@@ -299,7 +390,7 @@ export default function MapExplorer({ colleges, national = false }: Props) {
         layout: {
           "text-field": ["get", "point_count_abbreviated"],
           "text-font": ["Open Sans Bold", "Noto Sans Regular"],
-          "text-size": ["step", ["get", "point_count"], 10, 10, 11.5, 30, 12.5, 100, 14, 250, 15],
+          "text-size": ["step", ["get", "point_count"], 10, 10, 11.5, 30, 12.5, 100, 14, 500, 15, 2000, 16],
           "text-allow-overlap": true,
         },
         paint: { "text-color": SAND },
@@ -337,8 +428,8 @@ export default function MapExplorer({ colleges, national = false }: Props) {
         filter: ["!", ["has", "point_count"]],
         paint: {
           "circle-color": EMBER,
-          "circle-radius": ["interpolate", ["linear"], ["zoom"], 3, 3, 7, 5, 12, 7.5],
-          "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 3, 1, 7, 1.5],
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 1.5, 2, 7, 5, 12, 7.5],
+          "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 1.5, 0.6, 7, 1.5],
           "circle-stroke-color": SAND,
         },
       });
@@ -379,7 +470,7 @@ export default function MapExplorer({ colleges, national = false }: Props) {
         const feature = event.features?.[0];
         const slug = feature?.properties?.slug as string | undefined;
         if (!slug) return;
-        const college = collegesBySlug.get(slug);
+        const college = collegesBySlugRef.current.get(slug);
         if (!college) return;
         setSelected(college);
         map.setFilter("selected-glow", ["==", ["get", "slug"], slug]);
@@ -413,15 +504,56 @@ export default function MapExplorer({ colleges, national = false }: Props) {
         map.getCanvas().style.cursor = "";
         map.setFilter("point-hover", ["==", ["get", "slug"], ""]);
       });
+
+      mapLoadedRef.current = true;
+      applyPendingData();
     });
 
     return () => {
       map.remove();
       mapRef.current = null;
+      mapLoadedRef.current = false;
+      hasFitInitialRef.current = false;
     };
-  }, [collegesBySlug, colleges, national]);
+  }, [world]);
 
-  function goToRegion(id: "us" | "alaska" | "hawaii") {
+  // Ref mirror of collegesBySlug so the click handler (registered once,
+  // above) always sees the latest data without re-registering listeners.
+  const collegesBySlugRef = useRef(collegesBySlug);
+  collegesBySlugRef.current = collegesBySlug;
+
+  const applyPendingDataRef = useRef<() => void>(() => {});
+  applyPendingDataRef.current = () => {
+    const map = mapRef.current;
+    if (!map || !mapLoadedRef.current) return;
+    const source = map.getSource("colleges") as GeoJSONSource | undefined;
+    if (!source) return;
+    source.setData(collegesToGeoJSON(pool));
+
+    // Single-college pages (a college's own location map) centre & zoom in
+    // directly; everything else fits to the data once, the first time it
+    // arrives, and never again (so panning/zooming isn't fought later).
+    if (!hasFitInitialRef.current && pool.length > 0) {
+      hasFitInitialRef.current = true;
+      if (pool.length === 1) {
+        map.jumpTo({ center: [pool[0].longitude, pool[0].latitude], zoom: 13 });
+      } else if (!world) {
+        map.fitBounds(boundsFor(pool), { padding: 40 });
+      }
+      // world mode keeps its initial world/CONUS-mobile view — the data
+      // arriving shouldn't yank the camera away from what the visitor
+      // already sees.
+    }
+  };
+  function applyPendingData() {
+    applyPendingDataRef.current();
+  }
+
+  useEffect(() => {
+    applyPendingDataRef.current();
+  }, [pool]);
+
+  function goToRegion(id: RegionId) {
     const target = REGIONS.find((r) => r.id === id);
     if (!target) return;
     setRegion(id);
@@ -452,7 +584,7 @@ export default function MapExplorer({ colleges, national = false }: Props) {
   return (
     <div
       className={`map-shell relative w-full overflow-hidden border border-stone-200 bg-[#f2eadb] shadow-lift ${
-        national
+        world
           ? "h-[70vh] min-h-[460px] rounded-[22px] md:h-[calc(100vh-9.5rem)] md:min-h-[600px] md:rounded-[30px]"
           : "h-[72vh] min-h-[440px] rounded-[28px] md:h-[78vh]"
       }`}
@@ -477,10 +609,10 @@ export default function MapExplorer({ colleges, national = false }: Props) {
             <path d="M4 10h12" />
           </svg>
         </button>
-        {national && (
+        {world && (
           <>
             <span className="h-px bg-stone-200" aria-hidden="true" />
-            <button type="button" onClick={() => goToRegion("us")} aria-label="Reset to mainland US" title="Reset view" className={controlButton}>
+            <button type="button" onClick={() => goToRegion("world")} aria-label="Reset to world view" title="Reset view" className={controlButton}>
               <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M16 10a6 6 0 1 1-1.8-4.3" />
                 <path d="M16 3v4h-4" />
@@ -490,7 +622,7 @@ export default function MapExplorer({ colleges, national = false }: Props) {
         )}
       </div>
 
-      {national && (
+      {world && (
         <div
           role="group"
           aria-label="Jump to region"
@@ -504,18 +636,57 @@ export default function MapExplorer({ colleges, national = false }: Props) {
               aria-pressed={region === r.id}
               className="rounded-full px-3 py-1.5 text-xs font-semibold text-ink-700 transition hover:bg-sand-100 aria-pressed:bg-ink-900 aria-pressed:text-sand-50 md:text-[0.8rem]"
             >
-              {r.id === "us" ? "US" : r.label}
+              {r.label}
             </button>
           ))}
         </div>
       )}
 
-      {national && !selected && (
+      {world && (
+        <div className="absolute left-3 top-14 z-[5] flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-1.5 md:left-4 md:top-16">
+          {PLACE_LENSES.map((lens) => {
+            const isActive = activeLens === lens.id;
+            return (
+              <button
+                key={lens.id}
+                type="button"
+                onClick={() => {
+                  const next = isActive ? null : lens.id;
+                  setActiveLens(next);
+                  if (next) track("place_lens_selected", { lens: next });
+                }}
+                aria-pressed={isActive}
+                className="rounded-full border border-stone-200 bg-sand-50/95 px-3 py-1.5 text-xs font-semibold text-ink-700 shadow-soft backdrop-blur transition hover:bg-sand-100 aria-pressed:border-ember-400 aria-pressed:bg-ember-50 aria-pressed:text-ember-700 md:text-[0.8rem]"
+              >
+                {lens.label}
+              </button>
+            );
+          })}
+          {activeLens && (
+            <button
+              type="button"
+              onClick={() => setActiveLens(null)}
+              className="rounded-full bg-ink-900/90 px-2.5 py-1.5 text-xs font-semibold text-sand-50 shadow-soft backdrop-blur transition hover:bg-ink-900"
+              aria-label="Clear place lens"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      )}
+
+      {world && !selected && (
         <div className="pointer-events-none absolute bottom-3 left-3 z-[5] hidden rounded-2xl border border-stone-200 bg-sand-50/95 px-4 py-3 shadow-soft backdrop-blur md:bottom-5 md:left-5 md:block">
           <p className="font-display text-[0.95rem] font-semibold text-ink-900">
-            {formatNumber(colleges.length)} colleges · {stateCount} states &amp; territories
+            {pool.length > 0
+              ? `${formatNumber(pool.length)} ${activeLens ? "colleges" : "universities"} · ${countryCount} ${countryCount === 1 ? "country" : "countries"}`
+              : "Loading universities…"}
           </p>
-          <p className="mt-0.5 text-xs text-ink-500">Zoom in, click a dot, find your place.</p>
+          <p className="mt-0.5 text-xs text-ink-500">
+            {activeLens
+              ? "Based on official US campus-setting data."
+              : "Zoom in, click a dot, find your place."}
+          </p>
         </div>
       )}
 
@@ -536,7 +707,7 @@ export default function MapExplorer({ colleges, national = false }: Props) {
                   {getDisplayName(selected)}
                 </h3>
                 <p className="mt-1 text-sm text-ink-500">
-                  {selected.city}, {selected.stateCode}
+                  {selected.city}, {selected.stateCode ?? selected.countryName}
                 </p>
               </div>
               <button
@@ -550,7 +721,9 @@ export default function MapExplorer({ colleges, national = false }: Props) {
             </div>
 
             <div className="mb-5 flex flex-wrap gap-2 text-xs font-medium text-ink-700">
-              <span className="rounded-full bg-sand-100 px-3 py-1.5">{formatOwnership(selected.ownership)}</span>
+              <span className="rounded-full bg-sand-100 px-3 py-1.5">
+                {selected.ownership ? formatOwnership(selected.ownership) : selected.countryName}
+              </span>
               {selected.undergraduateEnrollment !== undefined && (
                 <span className="rounded-full bg-sand-100 px-3 py-1.5">
                   Undergrad: {formatNumber(selected.undergraduateEnrollment)}

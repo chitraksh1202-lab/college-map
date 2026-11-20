@@ -2,20 +2,47 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CollegePreview } from "@/lib/colleges";
 import { searchColleges, getDisplayName } from "@/lib/search";
 import { formatOwnership } from "@/lib/format";
+import { loadInstitutionPreviews } from "@/lib/client-data";
+import { track } from "@/lib/analytics";
 
 type Props = {
-  colleges: CollegePreview[];
+  /** Page-scoped list (a state's or a single college's own data) — small enough to embed directly. */
+  colleges?: CollegePreview[];
+  /**
+   * Set on the homepage instead of `colleges`: fetches the full worldwide
+   * dataset lazily from a static JSON asset rather than embedding ~24k
+   * institutions in the page HTML. See src/lib/client-data.ts.
+   */
+  dataUrl?: boolean;
   size?: "default" | "large";
 };
 
-export default function SearchBox({ colleges, size = "default" }: Props) {
+export default function SearchBox({ colleges, dataUrl, size = "default" }: Props) {
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [fetchedColleges, setFetchedColleges] = useState<CollegePreview[] | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLUListElement | null>(null);
 
-  const results = useMemo(() => searchColleges(colleges, query, 15), [colleges, query]);
+  useEffect(() => {
+    if (!dataUrl) return;
+    let cancelled = false;
+    loadInstitutionPreviews()
+      .then((data) => {
+        if (!cancelled) setFetchedColleges(data);
+      })
+      .catch(() => {
+        // Search silently stays empty if the fetch fails — the map/search
+        // aren't the only way to browse (state/country pages still work).
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dataUrl]);
+
+  const pool = colleges ?? fetchedColleges ?? [];
+  const results = useMemo(() => searchColleges(pool, query, 15), [pool, query]);
   const showDropdown = isOpen && query.trim().length > 0;
 
   useEffect(() => {
@@ -39,6 +66,7 @@ export default function SearchBox({ colleges, size = "default" }: Props) {
   }, [activeIndex]);
 
   function goTo(slug: string) {
+    track("search_result_opened", { slug, query });
     window.location.href = `/college/${slug}`;
   }
 
@@ -113,6 +141,7 @@ export default function SearchBox({ colleges, size = "default" }: Props) {
                 <a
                   href={`/college/${college.slug}`}
                   onMouseEnter={() => setActiveIndex(index)}
+                  onClick={() => track("search_result_opened", { slug: college.slug, query })}
                   className={`flex items-center justify-between gap-3 px-5 py-3 text-sm transition-colors ${
                     index === activeIndex ? "bg-ember-50" : "hover:bg-sand-100"
                   }`}
@@ -121,12 +150,14 @@ export default function SearchBox({ colleges, size = "default" }: Props) {
                     <span className="block truncate font-medium text-ink-800">
                       {getDisplayName(college)}
                     </span>
-                    <span className="block truncate text-xs text-ink-500">
-                      {formatOwnership(college.ownership)}
-                    </span>
+                    {college.ownership && (
+                      <span className="block truncate text-xs text-ink-500">
+                        {formatOwnership(college.ownership)}
+                      </span>
+                    )}
                   </span>
                   <span className="shrink-0 text-right text-xs text-ink-500">
-                    {college.city}, {college.stateCode}
+                    {college.city}, {college.stateCode ?? college.countryName}
                   </span>
                 </a>
               </li>

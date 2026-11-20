@@ -10,8 +10,14 @@ export default defineConfig({
     react(),
     tailwind(),
     sitemap({
-      filter: (page) => !page.includes("/saved"),
+      filter: (page) => !page.includes("/atlas"),
     }),
   ],
   output: "static",
+  // "Saved" -> "My Atlas": preserve the old bookmarked/shared URL rather
+  // than letting it 404. /saved was already noindex, so nothing SEO-wise
+  // is lost either way.
+  redirects: {
+    "/saved": "/atlas",
+  },
 });

@@ -4,6 +4,12 @@
  * would mean a saved college could "disappear" (or silently point at a
  * different institution) if its slug ever changes.
  */
+import { track } from "@/lib/analytics";
+
+// Storage key intentionally unchanged across the "My Atlas" rename — this
+// is the same account-free local save mechanism, just with new
+// product-facing copy/positioning. Renaming the key would need a
+// migration for zero benefit; existing saves keep working as-is.
 const STORAGE_KEY = "college-explorer:saved-colleges:v2";
 const LEGACY_STORAGE_KEY = "college-explorer:saved-colleges";
 
@@ -75,6 +81,7 @@ export function saveCollege(unitId: string): string[] {
   const next = [...current, unitId];
   writeSavedUnitIds(next);
   window.dispatchEvent(new CustomEvent(SAVED_COLLEGES_EVENT));
+  track("college_saved", { unitId, atlasSize: next.length });
   return next;
 }
 
@@ -82,6 +89,7 @@ export function unsaveCollege(unitId: string): string[] {
   const next = readList(STORAGE_KEY).filter((id) => id !== unitId);
   writeSavedUnitIds(next);
   window.dispatchEvent(new CustomEvent(SAVED_COLLEGES_EVENT));
+  track("college_removed", { unitId, atlasSize: next.length });
   return next;
 }
 

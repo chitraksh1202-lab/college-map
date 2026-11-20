@@ -11,7 +11,10 @@
     "astro": "astro",
     "lint": "eslint . --ext .ts,.tsx,.astro",
     "format": "prettier --write .",
-    "data:import": "tsx scripts/import-college-scorecard.ts",
+    "data:import": "tsx scripts/import-college-scorecard.ts && tsx scripts/import-global-institutions.ts && tsx scripts/merge-global-dataset.ts",
+    "data:import:us": "tsx scripts/import-college-scorecard.ts",
+    "data:import:global": "tsx scripts/import-global-institutions.ts",
+    "data:merge": "tsx scripts/merge-global-dataset.ts",
     "data:check": "tsx scripts/data-check.ts",
     "test": "vitest run"
   },
@@ -32,6 +35,8 @@
     "@types/node": "^22.10.5",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
+    "@types/stream-chain": "^2.1.0",
+    "@types/stream-json": "^1.7.8",
     "@typescript-eslint/eslint-plugin": "^8.19.1",
     "@typescript-eslint/parser": "^8.19.1",
     "adm-zip": "^0.6.1",
@@ -40,6 +45,7 @@
     "eslint-plugin-astro": "^1.3.1",
     "prettier": "^3.4.2",
     "prettier-plugin-astro": "^0.14.1",
+    "stream-json": "^1.9.1",
     "tsx": "^4.19.2",
     "vitest": "^5.0.1"
   }

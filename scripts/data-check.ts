@@ -17,7 +17,7 @@ import type { College } from "../src/lib/types.ts";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
 
-const COLLEGES_PATH = resolve(ROOT, "src/data/generated/colleges.json");
+const COLLEGES_PATH = resolve(ROOT, "src/data/generated/institutions.json");
 const REGISTRY_PATH = resolve(ROOT, "src/data/curated/stable-slugs.json");
 const REDIRECTS_PATH = resolve(ROOT, "src/data/curated/slug-redirects.json");
 
@@ -33,9 +33,33 @@ function main() {
   const registry = loadRegistry(REGISTRY_PATH);
   const redirects = loadRedirects(REDIRECTS_PATH);
 
-  info.push(`Generated dataset: ${colleges.length} colleges`);
+  const usCount = colleges.filter((c) => c.source === "scorecard").length;
+  const globalCount = colleges.filter((c) => c.source === "ror").length;
+  info.push(`Generated dataset: ${colleges.length} institutions (${usCount} US / ${globalCount} global)`);
   info.push(`Stable slug registry: ${Object.keys(registry).length} entries`);
   info.push(`Redirects: ${Object.keys(redirects).length} entries`);
+
+  // --- Every institution has the required global identity fields. ---
+  for (const college of colleges) {
+    if (!college.source) fail(`UNITID ${college.unitId} (${college.name}) is missing "source"`);
+    if (!college.countryCode) fail(`UNITID ${college.unitId} (${college.name}) is missing "countryCode"`);
+    if (!college.countryName) fail(`UNITID ${college.unitId} (${college.name}) is missing "countryName"`);
+    if (!college.continent) fail(`UNITID ${college.unitId} (${college.name}) is missing "continent"`);
+    if (college.source === "scorecard" && !college.unitId.match(/^\d+$/)) {
+      fail(`Scorecard institution ${college.unitId} does not look like a raw UNITID`);
+    }
+    if (college.source === "ror" && !college.unitId.startsWith("ror:")) {
+      fail(`ROR institution ${college.unitId} does not have the expected "ror:" prefix`);
+    }
+    const lat = college.latitude;
+    const lon = college.longitude;
+    if (typeof lat !== "number" || lat < -90 || lat > 90 || Number.isNaN(lat)) {
+      fail(`UNITID ${college.unitId} (${college.name}) has an invalid latitude ${lat}`);
+    }
+    if (typeof lon !== "number" || lon < -180 || lon > 180 || Number.isNaN(lon)) {
+      fail(`UNITID ${college.unitId} (${college.name}) has an invalid longitude ${lon}`);
+    }
+  }
 
   // --- Every current college has exactly one stable slug, and it matches the registry. ---
   for (const college of colleges) {

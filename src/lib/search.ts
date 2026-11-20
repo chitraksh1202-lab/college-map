@@ -4,11 +4,15 @@ import { curatedAliases } from "@/data/curated/aliases";
 /** Everything search/display needs — satisfied by both `College` and `CollegePreview`. */
 type Searchable = Pick<
   College,
-  "unitId" | "slug" | "name" | "city" | "state" | "stateCode" | "undergraduateEnrollment"
->;
+  "unitId" | "slug" | "name" | "city" | "state" | "stateCode" | "countryCode" | "countryName" | "undergraduateEnrollment"
+> &
+  Partial<Pick<College, "aliases">>;
 
 // Aliases/display names are curated data keyed by UNITID (the stable
-// identity) — see src/data/curated/aliases.ts for why.
+// identity) — see src/data/curated/aliases.ts for why. This is separate
+// from `College.aliases`, which holds official/derived aliases pulled
+// directly from a source record (currently only ROR institutions have
+// these) rather than hand-picked by us.
 const aliasByUnitId = new Map<string, string[]>();
 const displayNameByUnitId = new Map<string, string>();
 for (const entry of curatedAliases) {
@@ -16,7 +20,7 @@ for (const entry of curatedAliases) {
   if (entry.displayName) displayNameByUnitId.set(entry.unitId, entry.displayName);
 }
 
-/** Curated friendly name if one exists, otherwise the official Scorecard name. */
+/** Curated friendly name if one exists, otherwise the official name. */
 export function getDisplayName(college: Pick<Searchable, "unitId" | "name">): string {
   return displayNameByUnitId.get(college.unitId) ?? college.name;
 }
@@ -37,22 +41,29 @@ const RANK = {
   NAME_CONTAINS: 4,
   CITY_STARTS: 5,
   CITY_CONTAINS: 6,
-  STATE_MATCH: 7,
+  STATE_OR_COUNTRY_MATCH: 7,
   NONE: Infinity,
 } as const;
 
 /**
  * Deterministic relevance tier for one college against a query — no AI,
  * no external search service. Lower is better. See RANK above for the
- * priority order (alias/abbreviation match first, state-name match last).
+ * priority order (alias/abbreviation match first, country/state-name
+ * match last — an institution's own name/city always outranks a country
+ * match, per the global-search brief: "Ranking should prefer exact
+ * institution match over country match").
  */
 function rankCollege(college: Searchable, query: string): number {
-  const aliases = aliasByUnitId.get(college.unitId) ?? [];
+  const curatedAliasesForCollege = aliasByUnitId.get(college.unitId) ?? [];
+  const sourceAliases = (college.aliases ?? []).map(norm);
+  const aliases = [...curatedAliasesForCollege, ...sourceAliases];
   const displayName = norm(getDisplayName(college));
   const officialName = norm(college.name);
   const city = norm(college.city);
-  const state = norm(college.state);
-  const stateCode = norm(college.stateCode);
+  const state = college.state ? norm(college.state) : "";
+  const stateCode = college.stateCode ? norm(college.stateCode) : "";
+  const countryName = norm(college.countryName);
+  const countryCode = norm(college.countryCode);
 
   if (aliases.includes(query)) return RANK.ALIAS_EXACT;
   if (officialName === query || displayName === query) return RANK.NAME_EXACT;
@@ -64,7 +75,15 @@ function rankCollege(college: Searchable, query: string): number {
   if (officialName.includes(query) || displayName.includes(query)) return RANK.NAME_CONTAINS;
   if (city.startsWith(query)) return RANK.CITY_STARTS;
   if (city.includes(query)) return RANK.CITY_CONTAINS;
-  if (state === query || stateCode === query || state.startsWith(query)) return RANK.STATE_MATCH;
+  if (
+    (state && (state === query || state.startsWith(query))) ||
+    stateCode === query ||
+    countryName === query ||
+    countryName.startsWith(query) ||
+    countryCode === query
+  ) {
+    return RANK.STATE_OR_COUNTRY_MATCH;
+  }
 
   return RANK.NONE;
 }

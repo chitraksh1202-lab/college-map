@@ -333,11 +333,15 @@ function normalize(row: RawRow, slug: string): College {
     id: slug,
     unitId: row.UNITID ?? "",
     slug,
+    source: "scorecard",
     name: row.INSTNM ?? "",
     city: row.CITY ?? "",
     state: STATE_NAME_BY_CODE[stateCode] ?? stateCode,
     stateCode,
     zip: row.ZIP || undefined,
+    countryCode: "US",
+    countryName: "United States",
+    continent: "North America",
     latitude: parseNumeric(row.LATITUDE) ?? NaN,
     longitude: parseNumeric(row.LONGITUDE) ?? NaN,
     ownership: mapOwnership(control),
@@ -557,7 +561,7 @@ async function main() {
   report.duplicateUnitIds = [...unitIdCounts.entries()].filter(([, n]) => n > 1).map(([id]) => id);
   report.duplicateSlugs = [...slugCounts.entries()].filter(([, n]) => n > 1).map(([slug]) => slug);
 
-  colleges.sort((a, b) => a.stateCode.localeCompare(b.stateCode) || a.name.localeCompare(b.name));
+  colleges.sort((a, b) => (a.stateCode ?? "").localeCompare(b.stateCode ?? "") || a.name.localeCompare(b.name));
   report.imported = colleges.length;
 
   // --- Safeguard: never let a broken/empty run clobber a good dataset. ---

@@ -1,0 +1,8 @@
+Global merge complete
+
+US (Scorecard) institutions: 1821
+Global (ROR) institutions: 21974
+Total merged: 23795
+
+public/data/institutions-preview.json: 5.80 MB
+public/data/slugs.json: 0.85 MB

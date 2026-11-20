@@ -1,0 +1,28 @@
+---
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import AtlasMap from "@/components/AtlasMap.tsx";
+import AtlasCollection from "@/components/AtlasCollection.tsx";
+import { BRAND_NAME } from "@/lib/site";
+---
+
+<BaseLayout title={`My Atlas — ${BRAND_NAME}`} noindex>
+  <section class="mx-auto max-w-5xl px-4 pt-9 pb-6 md:px-8 md:pt-14">
+    <h1 class="font-display text-4xl font-semibold tracking-tight text-ink-900 md:text-5xl">
+      My College Atlas
+    </h1>
+    <p class="mt-2 max-w-md text-ink-500">Places you've discovered and want to remember.</p>
+  </section>
+
+  <section class="mx-auto max-w-6xl px-3 pb-8 md:px-8">
+    <AtlasMap client:load />
+  </section>
+
+  <section class="mx-auto max-w-5xl px-4 pb-16 md:px-8">
+    <AtlasCollection client:load />
+  </section>
+</BaseLayout>
+
+<script>
+  import { track } from "@/lib/analytics";
+  track("atlas_opened");
+</script>

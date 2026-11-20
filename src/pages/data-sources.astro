@@ -1,9 +1,12 @@
 ---
 import BaseLayout from "@/layouts/BaseLayout.astro";
-import { getAllColleges } from "@/lib/colleges";
+import { getAllColleges, getAllCountries } from "@/lib/colleges";
 import { BRAND_NAME } from "@/lib/site";
 
-const count = getAllColleges().length;
+const all = getAllColleges();
+const usCount = all.filter((c) => c.source === "scorecard").length;
+const globalCount = all.filter((c) => c.source === "ror").length;
+const countryCount = getAllCountries().length;
 ---
 
 <BaseLayout
@@ -15,9 +18,15 @@ const count = getAllColleges().length;
 
     <div class="mt-6 space-y-4 text-[0.95rem] leading-relaxed text-ink-700">
       <p>
-        Factual data for all {count.toLocaleString()} colleges — enrollment, admission rate,
-        tuition, net price, graduation rate, SAT average, and median earnings — comes from the
-        US Department of Education's{" "}
+        This site covers {all.length.toLocaleString()} institutions across {countryCount} countries,
+        from two separate official sources — never AI-generated, never scraped from ranking sites.
+      </p>
+
+      <h2 class="pt-4 font-display text-xl font-semibold text-ink-900">United States ({usCount.toLocaleString()} colleges)</h2>
+      <p>
+        Factual data for every US college — enrollment, admission rate, tuition, net price,
+        graduation rate, SAT average, and median earnings — comes from the US Department of
+        Education's{" "}
         <a
           href="https://collegescorecard.ed.gov/data/"
           target="_blank"
@@ -29,6 +38,24 @@ const count = getAllColleges().length;
         bulk data files. We don't scrape college websites or use AI to fill in missing numbers —
         if Scorecard doesn't report a figure for a school, we show "Data unavailable" or omit it
         rather than guess.
+      </p>
+
+      <h2 class="pt-4 font-display text-xl font-semibold text-ink-900">Everywhere else ({globalCount.toLocaleString()} institutions)</h2>
+      <p>
+        Non-US institution identity, location, and website come from the{" "}
+        <a
+          href="https://ror.org/"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-ember-600 hover:underline"
+        >
+          Research Organization Registry (ROR)
+        </a>
+        , an open registry of research/education organizations. ROR doesn't publish
+        enrollment, admission, or cost figures — this is deliberate: rather than mix a
+        detailed US-style profile with a thin, unverifiable one, global pages simply don't
+        show statistics we don't have official data for. A missing stat is never filled in
+        with a guess, and US and non-US figures are never presented as directly comparable.
       </p>
 
       <h2 class="pt-4 font-display text-xl font-semibold text-ink-900">Good to know</h2>

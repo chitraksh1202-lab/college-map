@@ -1,0 +1,97 @@
+---
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import MapExplorer from "@/components/MapExplorer.tsx";
+import TeleportButton from "@/components/TeleportButton.tsx";
+import { getCityGroups, getCollegesByCitySlug } from "@/lib/colleges";
+import { getDisplayName } from "@/lib/search";
+import { formatOwnership } from "@/lib/format";
+import { BRAND_NAME } from "@/lib/site";
+
+export function getStaticPaths() {
+  return getCityGroups().map((group) => ({
+    params: { city: group.citySlug },
+    props: group,
+  }));
+}
+
+type Props = { citySlug: string; city: string; stateCode: string; count: number };
+
+const { city, stateCode, count } = Astro.props;
+const colleges = getCollegesByCitySlug(Astro.params.city!).sort((a, b) => a.name.localeCompare(b.name));
+const mapColleges = colleges.map((c) => ({
+  unitId: c.unitId,
+  slug: c.slug,
+  name: c.name,
+  city: c.city,
+  state: c.state,
+  stateCode: c.stateCode,
+  countryCode: c.countryCode,
+  countryName: c.countryName,
+  latitude: c.latitude,
+  longitude: c.longitude,
+  ownership: c.ownership,
+  undergraduateEnrollment: c.undergraduateEnrollment,
+}));
+const stateSlug = (colleges[0]?.state ?? "").toLowerCase().replace(/\s+/g, "-");
+---
+
+<BaseLayout
+  title={`Colleges in ${city}, ${stateCode} — ${BRAND_NAME}`}
+  description={`${count} colleges in ${city}, ${stateCode} — explore them on the map, then wander to nearby places.`}
+>
+  <section class="mx-auto max-w-6xl px-4 pt-8 pb-5 md:px-8 md:pt-12">
+    <p class="text-sm font-medium text-ember-600">
+      <a href={`/state/${stateSlug}`} class="hover:underline">← {colleges[0]?.state}</a>
+    </p>
+    <h1 class="mt-2 font-display text-4xl font-semibold tracking-tight text-ink-900 md:text-5xl">
+      Colleges in {city}
+    </h1>
+    <p class="mt-2 max-w-lg text-ink-500">
+      {count} colleges share this city — close enough to cross-visit, far enough apart to feel like
+      real neighborhoods.
+    </p>
+  </section>
+
+  <section class="mx-auto max-w-6xl px-3 pb-10 md:px-8">
+    <MapExplorer client:load colleges={mapColleges} />
+  </section>
+
+  <section class="mx-auto max-w-6xl px-4 pb-10 md:px-8">
+    <h2 class="mb-2 font-display text-xl font-semibold text-ink-900">Every college in {city}</h2>
+    <ul class="divide-y divide-stone-200 border-t border-stone-200">
+      {
+        colleges.map((college) => (
+          <li class="min-w-0">
+            <a
+              href={`/college/${college.slug}`}
+              data-track="college_opened"
+              data-track-slug={college.slug}
+              class="group flex items-center justify-between gap-4 py-3.5 transition-colors hover:bg-sand-100/70 sm:rounded-xl sm:px-3"
+            >
+              <div class="min-w-0">
+                <p class="truncate font-medium text-ink-800 group-hover:text-ink-900">
+                  {getDisplayName(college)}
+                </p>
+                <p class="mt-0.5 truncate text-sm text-ink-500">{formatOwnership(college.ownership)}</p>
+              </div>
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 20 20"
+                fill="none"
+                class="h-4 w-4 shrink-0 text-stone-400 transition group-hover:translate-x-0.5 group-hover:text-ember-500"
+              >
+                <path d="M7.5 4.5L13 10l-5.5 5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+  </section>
+
+  <section class="mx-auto max-w-6xl px-4 pb-16 md:px-8">
+    <div class="flex justify-center border-t border-stone-200 pt-10">
+      <TeleportButton client:load label="Explore somewhere else" />
+    </div>
+  </section>
+</BaseLayout>

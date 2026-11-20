@@ -59,5 +59,28 @@ const canonicalUrl = new URL(Astro.url.pathname, Astro.site).toString();
     <main>
       <slot />
     </main>
+    <script>
+      // Tiny, reusable click-tracking convention: any element with
+      // data-track="<event name>" fires that analytics event on click,
+      // with data-track-<x> attributes passed through as event props.
+      // One delegated listener here means individual components (Astro
+      // or React) never need to import/wire analytics themselves for a
+      // simple "this was clicked" event — see src/lib/analytics.ts.
+      import { track, type AnalyticsEvent } from "@/lib/analytics";
+
+      document.addEventListener("click", (event) => {
+        const el = (event.target as HTMLElement)?.closest<HTMLElement>("[data-track]");
+        if (!el) return;
+        const name = el.getAttribute("data-track");
+        if (!name) return;
+        const props: Record<string, string> = {};
+        for (const attr of Array.from(el.attributes)) {
+          if (attr.name.startsWith("data-track-")) {
+            props[attr.name.replace("data-track-", "")] = attr.value;
+          }
+        }
+        track(name as AnalyticsEvent, props);
+      });
+    </script>
   </body>
 </html>

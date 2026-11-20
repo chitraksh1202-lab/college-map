@@ -1,17 +1,20 @@
 ---
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import MapExplorer from "@/components/MapExplorer.tsx";
-import { getAllColleges, getCollegesByState, getCollegePreviewsByState } from "@/lib/colleges";
+import { getAllColleges, getCollegesByState, getCollegePreviewsByState, getCityGroups } from "@/lib/colleges";
 import { getDisplayName } from "@/lib/search";
 import { formatOwnership } from "@/lib/format";
+import { BRAND_NAME } from "@/lib/site";
 
 export function getStaticPaths() {
-  const colleges = getAllColleges();
+  // US only — non-US institutions use /country/[country] instead (they
+  // have no stateCode).
+  const colleges = getAllColleges().filter((c) => c.source === "scorecard");
   const stateSlugs = new Map<string, { stateCode: string; stateName: string }>();
   for (const college of colleges) {
-    const slug = college.state.toLowerCase().replace(/\s+/g, "-");
+    const slug = (college.state ?? "").toLowerCase().replace(/\s+/g, "-");
     if (!stateSlugs.has(slug)) {
-      stateSlugs.set(slug, { stateCode: college.stateCode, stateName: college.state });
+      stateSlugs.set(slug, { stateCode: college.stateCode ?? "", stateName: college.state ?? "" });
     }
   }
   return Array.from(stateSlugs.entries()).map(([slug, value]) => ({
@@ -25,10 +28,11 @@ type Props = { stateCode: string; stateName: string };
 const { stateCode, stateName } = Astro.props;
 const colleges = getCollegesByState(stateCode).sort((a, b) => a.name.localeCompare(b.name));
 const mapColleges = getCollegePreviewsByState(stateCode);
+const cities = getCityGroups().filter((c) => c.stateCode === stateCode);
 ---
 
 <BaseLayout
-  title={`Colleges in ${stateName} — College Explorer`}
+  title={`Colleges in ${stateName} — ${BRAND_NAME}`}
   description={`Explore ${colleges.length} colleges in ${stateName}: interactive map, campus details, and Street View.`}
 >
   <section class="mx-auto max-w-6xl px-4 pt-8 pb-5 md:px-8 md:pt-12">
@@ -41,6 +45,20 @@ const mapColleges = getCollegePreviewsByState(stateCode);
     <p class="mt-2 text-ink-500">
       {colleges.length} college{colleges.length === 1 ? "" : "s"} to explore.
     </p>
+    {
+      cities.length > 0 && (
+        <div class="mt-4 flex flex-wrap gap-2">
+          {cities.map((c) => (
+            <a
+              href={`/city/${c.citySlug}`}
+              class="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-700 transition hover:border-ember-300 hover:text-ember-700"
+            >
+              {c.city} · {c.count}
+            </a>
+          ))}
+        </div>
+      )
+    }
   </section>
 
   <section class="mx-auto max-w-6xl px-3 pb-10 md:px-8">

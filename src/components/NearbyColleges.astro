@@ -13,18 +13,20 @@ const nearby = getNearbyColleges(slug, 6);
 {
   nearby.length > 0 && (
     <section aria-labelledby="nearby-heading" class="mx-auto max-w-5xl px-4 pb-4 md:px-8">
-      <SectionHeading title="If you're exploring here…" supporting="Nearby colleges worth a look too." id="nearby-heading" />
+      <SectionHeading title="If you're exploring here…" supporting="Nearby institutions worth a look too." id="nearby-heading" />
       <div class="relative">
         <ul class="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2 md:mx-0 md:grid md:grid-cols-3 md:overflow-visible md:px-0">
           {nearby.map(({ college, distanceMiles }) => (
             <li class="w-[13.5rem] shrink-0 snap-start md:w-auto">
               <a
                 href={`/college/${college.slug}`}
+                data-track="nearby_college_opened"
+                data-track-slug={college.slug}
                 class="group block h-full min-w-0 rounded-2xl bg-sand-100 p-4 transition-all duration-200 ease-smooth hover:-translate-y-0.5 hover:bg-sand-200 hover:shadow-soft"
               >
                 <p class="truncate font-display font-semibold text-ink-900">{getDisplayName(college)}</p>
                 <p class="mt-1 truncate text-sm text-ink-500">
-                  {college.city}, {college.stateCode}
+                  {college.city}, {college.stateCode ?? college.countryName}
                 </p>
                 <p class="mt-2 text-xs font-medium text-ember-600">{formatMiles(distanceMiles)} away</p>
               </a>
